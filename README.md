@@ -69,20 +69,16 @@ npm run build
 8. Sign the transaction in Freighter.
 9. Confirm the success message and transaction hash appear in the app.
 
-## Screenshots Checklist
+## Screenshots
 
-Add these screenshots before final challenge submission:
+### Wallet Connected & Balance Displayed
+![Wallet and Balance Displayed](public/screenshots/wallet%20and%20balance%20displayed.png)
 
-- Wallet connected state
-- XLM balance displayed
-- Successful testnet transaction
-- Transaction result with hash shown
+### Successful Transaction in App
+![Successful Transaction](public/screenshots/success%20transaction.png)
 
-Suggested folder:
-
-```text
-public/screenshots/
-```
+### Transaction Confirmed on Explorer
+![Transaction Explorer View](public/screenshots/transaction.png)
 
 ## Repository
 

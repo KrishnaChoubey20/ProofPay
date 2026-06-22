@@ -76,14 +76,16 @@ Friendbot:
 https://friendbot.stellar.org
 ```
 
-## Screenshots Required For Submission
+## Screenshots
 
-Place screenshots in `public/screenshots/` before final submission:
+### Wallet Connected & Balance Displayed
+![Wallet and Balance Displayed](public/screenshots/wallet%20and%20balance%20displayed.png)
 
-- Wallet connected state
-- Balance displayed
-- Successful testnet transaction
-- Transaction result shown to the user
+### Successful Transaction in App
+![Successful Transaction](public/screenshots/success%20transaction.png)
+
+### Transaction Confirmed on Explorer
+![Transaction Explorer View](public/screenshots/transaction.png)
 
 ## Repository
 
