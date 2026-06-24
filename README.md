@@ -1,34 +1,41 @@
-# ProofPay Alpha
+# ProofPay
 
-ProofPay Alpha is a Stellar Testnet payroll prototype built for the Stellar Journey to Mastery White Belt challenge.
+ProofPay is a Stellar Testnet payroll platform built for the Stellar Journey to Mastery challenge.
 
-The full ProofPay vision is private payroll for global remote teams: workers receive payroll on Stellar and later generate selective income proofs for rent, loans, visas, and taxes without exposing their full wallet history. This Level 1 build focuses on the required fundamentals: wallet connection, balance display, and a signed XLM transaction on Stellar Testnet.
+The full ProofPay vision is private payroll for global remote teams: workers receive payroll on Stellar and later generate selective income proofs for rent, loans, visas, and taxes without exposing their full wallet history.
 
-For the dedicated challenge submission notes, see [LEVEL1_WHITE_BELT_README.md](./LEVEL1_WHITE_BELT_README.md).
+## Challenge Levels
 
-## White Belt Features
+This repository houses the implementations for each level of the Stellar Journey to Mastery:
 
-- Connect Freighter wallet
-- Disconnect Freighter wallet
-- Detect Stellar Testnet network
-- Fetch the connected wallet's XLM balance from Horizon testnet
-- Send a payroll-style XLM transaction on Stellar Testnet
-- Show transaction loading, success, failure, hash, and explorer link
-- Provide a ProofPay roadmap for the next belt levels
+*   **🟡 [Level 2 — Yellow Belt Submission](./LEVEL2_YELLOW_BELT_README.md) (Current Level)**
+    *   **Focus:** Multi-wallet integration, smart contract vault deployment, and real-time event synchronization.
+    *   **Features:** StellarWalletsKit integration, customized Soroban smart contract, live event streaming feed, transaction loading and receipt indicators, and robust error handlers for 3 standard wallet error types.
+    *   *Includes all screenshots and transaction logs in the [Level 2 README](./LEVEL2_YELLOW_BELT_README.md).*
+
+*   **⚪ [Level 1 — White Belt Submission](./LEVEL1_WHITE_BELT_README.md)**
+    *   **Focus:** Core Stellar wallets connection, balance fetching, and basic direct payroll payments.
+    *   **Features:** Connect and disconnect Freighter wallet, fetch XLM balances from Horizon Testnet, and submit direct classic payroll payments on Stellar Testnet.
+    *   *Includes all screenshots and setup guides in the [Level 1 README](./LEVEL1_WHITE_BELT_README.md).*
+
+---
 
 ## Tech Stack
 
-- React
-- TypeScript
+- React + TypeScript
 - Vite
-- Freighter API
-- Stellar JavaScript SDK
+- StellarWalletsKit (`@creit.tech/stellar-wallets-kit` v2.3.0)
+- Stellar JavaScript SDK v13
+- Soroban RPC (`soroban-testnet.stellar.org`)
 - Stellar Testnet Horizon
+- Rust + Soroban SDK v25.0.1 (smart contract)
+
+---
 
 ## Requirements
 
 - Node.js 20 or newer
-- Freighter browser wallet
+- A Stellar wallet extension (Freighter, LOBSTR, xBull, etc.)
 - A funded Stellar Testnet account
 
 Fund your testnet wallet with Friendbot:
@@ -36,6 +43,8 @@ Fund your testnet wallet with Friendbot:
 ```text
 https://friendbot.stellar.org
 ```
+
+---
 
 ## Run Locally
 
@@ -45,7 +54,7 @@ Install dependencies:
 npm install
 ```
 
-Start the app:
+Start the development server:
 
 ```bash
 npm run dev
@@ -57,42 +66,53 @@ Build for production:
 npm run build
 ```
 
-## How To Test The Transaction Flow
+---
 
-1. Open the app in a browser with Freighter installed.
-2. Set Freighter to Stellar Testnet.
-3. Connect your wallet.
-4. Confirm your XLM balance appears.
-5. Paste a valid Stellar testnet recipient address.
-6. Enter an XLM amount.
-7. Click `Send Test Payroll`.
-8. Sign the transaction in Freighter.
-9. Confirm the success message and transaction hash appear in the app.
+## Vault Contract Deployment (Optional — for full Soroban features)
 
-## Screenshots
-
-### Wallet Connected & Balance Displayed
-![Wallet and Balance Displayed](public/screenshots/wallet%20and%20balance%20displayed.png)
-
-### Successful Transaction in App
-![Successful Transaction](public/screenshots/success%20transaction.png)
-
-### Transaction Confirmed on Explorer
-![Transaction Explorer View](public/screenshots/transaction.png)
-
-## Repository
+> Requires: Rust toolchain + `wasm32-unknown-unknown` target + Stellar CLI
 
 ```bash
-git remote add origin https://github.com/KrishnaChoubey20/ProofPay.git
-git branch -M main
-git push -u origin main
+# Build the Rust contract
+cd contracts/payroll-vault
+stellar contract build
+
+# Fund a deploy key and deploy to testnet
+stellar keys generate --global deployer --network testnet --fund
+
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/payroll_vault.wasm \
+  --source deployer \
+  --network testnet \
+  -- \
+  --admin deployer \
+  --native_token CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+
+# Copy the returned Contract ID into:
+# src/lib/stellar.ts → VAULT_CONTRACT_ID constant
 ```
+
+See [LEVEL2_YELLOW_BELT_README.md](./LEVEL2_YELLOW_BELT_README.md) for the complete deployment guide.
+
+---
+
+## Submission Links
+
+| Item | Value |
+|---|---|
+| **GitHub Repo** | https://github.com/KrishnaChoubey20/ProofPay |
+| **Live Demo (Vercel)** | *(Add after deploy)* |
+| **Vault Contract ID** | `CD35FOUT64RGU4UKZQHCQPPDSPB7XIJ6AVRLFYN2NDR3MFJG5HL4VSRD` |
+
+---
 
 ## Belt Roadmap
 
-- White Belt: Freighter connection, XLM balance, testnet payroll transaction.
-- Yellow Belt: employer and worker views, payroll history, multi-wallet flows.
-- Orange Belt: smart contract payroll vault with scheduled payouts.
-- Green Belt: USDC payroll, splitting rules, and selective income proof design.
-- Blue Belt: 50-user pilot with freelancers and remote workers.
-- Black Belt: mainnet launch, privacy proof layer, audits, and real employer onboarding.
+- ✅ **White Belt:** Freighter connection, XLM balance, testnet payroll transaction.
+- ✅ **Yellow Belt:** StellarWalletsKit multi-wallet, Soroban Vault contract, Deposit/Claim, real-time events.
+- 🔜 **Orange Belt:** Scheduled payouts, recurring payroll, multi-employer vaults.
+- 🔜 **Green Belt:** USDC payroll, splitting rules, and selective income proof design.
+- 🔜 **Blue Belt:** 50-user pilot with freelancers and remote workers.
+- 🔜 **Black Belt:** Mainnet launch, privacy proof layer, audits, and real employer onboarding.
+
+

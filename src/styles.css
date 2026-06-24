@@ -226,3 +226,222 @@ footer{background:var(--ink);color:var(--cream);padding:44px 0 28px;}
   .footer-links{flex-direction:column;gap:22px;}
   .nav-addr{display:none !important;}
 }
+
+/* ═══════════════════════════
+   LEVEL 2 YELLOW BELT STYLING
+   ═══════════════════════════ */
+
+/* Tab bar for switching between classic Send Payroll and Vault */
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  background: var(--cream-dark);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-btn:hover {
+  color: var(--ink);
+}
+.tab-btn.active {
+  background: #fff;
+  color: var(--sage);
+  box-shadow: 0 2px 8px rgba(26,22,18,0.05);
+}
+
+/* Vault tabs inside Vault Panel */
+.vault-tabs {
+  display: flex;
+  border-bottom: 1.5px solid var(--border);
+  margin-bottom: 20px;
+  gap: 16px;
+}
+.vault-tab {
+  padding: 8px 4px 12px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+.vault-tab:hover {
+  color: var(--ink-soft);
+}
+.vault-tab.active {
+  color: var(--sage);
+}
+.vault-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1.5px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--sage);
+  border-radius: 2px;
+}
+
+/* Live Activity Feed styling */
+.activity-feed {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 9px;
+  background: var(--cream-dark);
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.feed-item:hover {
+  border-color: var(--border-strong);
+}
+.feed-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.feed-icon.deposit {
+  background: var(--sage-pale);
+  color: var(--sage);
+}
+.feed-icon.claim {
+  background: var(--gold-light);
+  color: var(--gold);
+}
+.feed-content {
+  flex: 1;
+}
+.feed-title {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+.feed-sub {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+.feed-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--sage);
+}
+
+/* Streaming pulse dot */
+.streaming-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--sage);
+  background: var(--sage-pale);
+  padding: 4px 10px;
+  border-radius: 99px;
+}
+.feed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0.5; }
+}
+
+/* Premium Error Toasts */
+.error-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.error-toast--not-found {
+  background: #FFF9E6;
+  border-color: #FFE699;
+  color: #8A6D1C;
+}
+.error-toast--rejected {
+  background: #FFF3F0;
+  border-color: #FFD2C8;
+  color: #C0392B;
+}
+.error-toast--balance {
+  background: #FFF0F2;
+  border-color: #FFC8D0;
+  color: #9C1A3C;
+}
+.error-toast-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.error-toast-body {
+  flex: 1;
+}
+.error-toast-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+/* Copy contract ID badge */
+.contract-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--cream-dark);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+}
+.contract-badge code {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  word-break: break-all;
+}
+

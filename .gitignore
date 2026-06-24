@@ -7,3 +7,13 @@ dist
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
+
+# Rust/Cargo build directories
+target
+target_temp
+**/target
+**/target_temp
+
+# Agent directories
+.agents
+
