@@ -161,7 +161,7 @@ The complete on-chain lifecycle for the smart contract vault has been captured a
 | Item | Value |
 |---|---|
 | **GitHub Repo** | https://github.com/KrishnaChoubey20/ProofPay |
-| **Live Demo (Vercel)** | *(Add after deploy)* |
+| **Live Demo (Vercel)** | [https://proofpay-brown.vercel.app/](https://proofpay-brown.vercel.app/) |
 | **Contract ID** | `CD35FOUT64RGU4UKZQHCQPPDSPB7XIJ6AVRLFYN2NDR3MFJG5HL4VSRD` |
 | **Sample Deposit Tx** | [9b9039ca0b8beeaa77c48bd3cb0694cbb386dbcd67f294afe7b06c117f195b97](https://stellar.expert/explorer/testnet/tx/9b9039ca0b8beeaa77c48bd3cb0694cbb386dbcd67f294afe7b06c117f195b97) |
 | **Sample Claim Tx** | [40c6f62842001d8c2029f0fa0e26045bf5395f673886c1ae9634d912040301b6](https://stellar.expert/explorer/testnet/tx/40c6f62842001d8c2029f0fa0e26045bf5395f673886c1ae9634d912040301b6) |

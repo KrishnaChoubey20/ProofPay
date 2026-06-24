@@ -101,7 +101,7 @@ See [LEVEL2_YELLOW_BELT_README.md](./LEVEL2_YELLOW_BELT_README.md) for the compl
 | Item | Value |
 |---|---|
 | **GitHub Repo** | https://github.com/KrishnaChoubey20/ProofPay |
-| **Live Demo (Vercel)** | *(Add after deploy)* |
+| **Live Demo (Vercel)** | [https://proofpay-brown.vercel.app/](https://proofpay-brown.vercel.app/) |
 | **Vault Contract ID** | `CD35FOUT64RGU4UKZQHCQPPDSPB7XIJ6AVRLFYN2NDR3MFJG5HL4VSRD` |
 
 ---
