@@ -1,0 +1,15 @@
+[package]
+name = "payroll-factory"
+version = "0.1.0"
+edition = "2021"
+description = "ProofPay Vault Factory — Deploy dynamic payroll vaults on-chain"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = "25.0.1"
+
+[dev-dependencies]
+soroban-sdk = { version = "25.0.1", features = ["testutils"] }
+# We can add dependencies or build configs if needed
