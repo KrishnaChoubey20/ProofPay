@@ -59,7 +59,7 @@ This repository houses the step-by-step evolution of ProofPay across the challen
 | **GitHub Repo** | [https://github.com/KrishnaChoubey20/ProofPay](https://github.com/KrishnaChoubey20/ProofPay) |
 | **Live Demo (Vercel)** | [https://proofpay-brown.vercel.app/](https://proofpay-brown.vercel.app/) |
 | **Factory Contract ID** | `CB4APYC7KJRCXO2AH6SLYNB3FSUZYBIYW2J47S4JXI6ILNQ7TX6X4RFX` |
-| **Default Vault ID** | `CD35FOUT64RGU4UKZQHCQPPDSPB7XIJ6AVRLFYN2NDR3MFJG5HL4VSRD` |
+| **Default Vault ID** | `CDHJGGDSEOTXHNYV7Y2CQYU5CX3CV4ZOB5EDWDO4QPYHAKNWUPNYNPJQ` |
 | **Sample Install Wasm Tx** | [bdb16cfa...66f445f4](https://stellar.expert/explorer/testnet/tx/bdb16cfa3ed2ad68721dd96d6657f68e1880d92439ea788281b02a2966f445f4) |
 | **Sample Deploy Factory Tx** | [2dac599a...6afc942](https://stellar.expert/explorer/testnet/tx/2dac599abfbc0a4301c58d53fea5cf0fed6bba0631b3a304141094b576afc942) |
 | **Sample Factory Launch Vault Tx** | [feba52c1...bffd500](https://stellar.expert/explorer/testnet/tx/feba52c1469928760800bf023a6ebf54f98a097a9d05f10e7b93216bcffbd500) |
