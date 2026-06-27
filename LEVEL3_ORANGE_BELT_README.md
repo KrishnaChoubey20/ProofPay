@@ -7,6 +7,7 @@ Building on the wallet adapters and on-chain escrow of Level 2, we have upgraded
 
 * **Production Live Demo**: [https://proofpay-brown.vercel.app/](https://proofpay-brown.vercel.app/)
 * **GitHub Repository**: [KrishnaChoubey20/ProofPay](https://github.com/KrishnaChoubey20/ProofPay)
+* **Demo Walkthrough Video**: [YouTube Link](https://youtu.be/5cFZdiSHbZI)
 
 ---
 

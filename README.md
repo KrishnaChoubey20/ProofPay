@@ -58,6 +58,7 @@ This repository houses the step-by-step evolution of ProofPay across the challen
 |---|---|
 | **GitHub Repo** | [https://github.com/KrishnaChoubey20/ProofPay](https://github.com/KrishnaChoubey20/ProofPay) |
 | **Live Demo (Vercel)** | [https://proofpay-brown.vercel.app/](https://proofpay-brown.vercel.app/) |
+| **Demo Walkthrough Video** | [https://youtu.be/5cFZdiSHbZI](https://youtu.be/5cFZdiSHbZI) |
 | **Factory Contract ID** | `CB4APYC7KJRCXO2AH6SLYNB3FSUZYBIYW2J47S4JXI6ILNQ7TX6X4RFX` |
 | **Default Vault ID** | `CDHJGGDSEOTXHNYV7Y2CQYU5CX3CV4ZOB5EDWDO4QPYHAKNWUPNYNPJQ` |
 | **Sample Install Wasm Tx** | [bdb16cfa...66f445f4](https://stellar.expert/explorer/testnet/tx/bdb16cfa3ed2ad68721dd96d6657f68e1880d92439ea788281b02a2966f445f4) |
