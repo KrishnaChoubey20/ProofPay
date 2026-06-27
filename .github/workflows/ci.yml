@@ -32,15 +32,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run Cargo Tests
-        run: |
-          cd contracts
-          cargo test
-
       - name: Build WASM Binaries
         run: |
           cd contracts
           cargo build --target wasm32v1-none --release
+
+      - name: Run Cargo Tests
+        run: |
+          cd contracts
+          cargo test
 
   frontend:
     name: Frontend React CI
