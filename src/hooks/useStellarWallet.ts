@@ -151,7 +151,9 @@ export function useStellarWallet() {
   const disconnect = useCallback(async () => {
     try {
       await StellarWalletsKit.disconnect();
-    } catch (e) {}
+    } catch {
+      // Ignored
+    }
     setState({ address: null, connected: false, walletId: null, error: null });
   }, []);
 

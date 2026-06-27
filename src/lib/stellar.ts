@@ -1,5 +1,16 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
+import { Buffer } from "buffer";
 import { addressArg, xlmToStroopsArg } from "./contractArgs";
+
+interface SimulationSuccess {
+  result?: {
+    retval: StellarSdk.xdr.ScVal;
+  };
+}
+
+interface SimulationError {
+  error: string;
+}
 
 // ── Network constants ────────────────────────────────────────────────────────
 export const STELLAR_EXPERT_TESTNET = "https://stellar.expert/explorer/testnet/tx";
@@ -129,7 +140,7 @@ export async function invokeContract(
   const simulation = await rpc.simulateTransaction(tx);
 
   if (StellarSdk.rpc.Api.isSimulationError(simulation)) {
-    const errMsg = (simulation as any).error;
+    const errMsg = (simulation as SimulationError).error;
     if (
       errMsg.toLowerCase().includes("balance") ||
       errMsg.toLowerCase().includes("insufficient")
@@ -208,10 +219,13 @@ export async function getVaultFromFactory(
       .build();
 
     const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
-      const val = (simulation as any).result.retval;
-      const native = StellarSdk.scValToNative(val);
-      return native ? String(native) : null;
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val);
+        return native ? String(native) : null;
+      }
     }
     return null;
   } catch {
@@ -294,9 +308,12 @@ export async function getVaultTotalDeposited(
       .build();
 
     const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
-      const val = (simulation as any).result.retval;
-      return BigInt(StellarSdk.scValToNative(val));
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        return BigInt(StellarSdk.scValToNative(val));
+      }
     }
     return 0n;
   } catch {
@@ -321,14 +338,17 @@ export async function getScheduledAllocations(
       .build();
 
     const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
-      const val = (simulation as any).result.retval;
-      const native = StellarSdk.scValToNative(val);
-      if (Array.isArray(native)) {
-        return native.map((item: any) => ({
-          amount: BigInt(item.amount),
-          releaseTime: BigInt(item.release_time),
-        }));
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val);
+        if (Array.isArray(native)) {
+          return (native as { amount: string | number | bigint; release_time: string | number | bigint }[]).map((item) => ({
+            amount: BigInt(item.amount),
+            releaseTime: BigInt(item.release_time),
+          }));
+        }
       }
     }
     return [];
@@ -354,17 +374,26 @@ export async function getStreamDetails(
       .build();
 
     const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
-      const val = (simulation as any).result.retval;
-      const native = StellarSdk.scValToNative(val);
-      if (native) {
-        return {
-          sender: String(native.sender),
-          totalAmount: BigInt(native.total_amount),
-          startTime: BigInt(native.start_time),
-          endTime: BigInt(native.end_time),
-          claimedAmount: BigInt(native.claimed_amount),
-        };
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val) as {
+          sender: string | number | bigint;
+          total_amount: string | number | bigint;
+          start_time: string | number | bigint;
+          end_time: string | number | bigint;
+          claimed_amount: string | number | bigint;
+        } | null;
+        if (native) {
+          return {
+            sender: String(native.sender),
+            totalAmount: BigInt(native.total_amount),
+            startTime: BigInt(native.start_time),
+            endTime: BigInt(native.end_time),
+            claimedAmount: BigInt(native.claimed_amount),
+          };
+        }
       }
     }
     return null;
@@ -390,9 +419,12 @@ export async function getStreamClaimable(
       .build();
 
     const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
-      const val = (simulation as any).result.retval;
-      return BigInt(StellarSdk.scValToNative(val));
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        return BigInt(StellarSdk.scValToNative(val));
+      }
     }
     return 0n;
   } catch {

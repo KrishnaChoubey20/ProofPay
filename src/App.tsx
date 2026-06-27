@@ -4,8 +4,6 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import {
   buildPayrollPaymentXdr,
   getNativeBalance,
-  isTestnetNetwork,
-  NETWORK_PASSPHRASE,
   STELLAR_EXPERT_TESTNET,
   submitSignedTransaction,
   invokeContract,
@@ -19,7 +17,6 @@ import {
   buildDeployVaultXdr,
   getScheduledAllocations,
   getStreamDetails,
-  getStreamClaimable,
   buildDepositScheduledXdr,
   buildClaimScheduledXdr,
   buildCreateStreamXdr,
@@ -217,8 +214,9 @@ export default function App() {
       setBalance(nextBalance);
       setBalanceMessage("Updated from Testnet Horizon");
     } catch (error) {
+      const err = error as { response?: { status?: number } };
       const msg =
-        (error as any)?.response?.status === 404
+        err?.response?.status === 404
           ? "Account not funded on Testnet yet. Use Friendbot."
           : friendlyErr(error);
       setBalance(null);
@@ -364,7 +362,9 @@ export default function App() {
         setCopiedHash(hash);
         setTimeout(() => setCopiedHash(null), 1600);
       }
-    } catch (e) {}
+    } catch {
+      // Ignored
+    }
   }
 
   // Deploy dynamic vault via Factory
@@ -1177,7 +1177,7 @@ export default function App() {
                         <select 
                           className="form-select"
                           value={depositType}
-                          onChange={(e) => setDepositType(e.target.value as any)}
+                          onChange={(e) => setDepositType(e.target.value as "instant" | "scheduled" | "streaming")}
                         >
                           <option value="instant">Instant allocation</option>
                           <option value="scheduled">Scheduled release (Time-locked)</option>
@@ -1254,7 +1254,7 @@ export default function App() {
                         <select 
                           className="form-select"
                           value={claimType}
-                          onChange={(e) => setClaimType(e.target.value as any)}
+                          onChange={(e) => setClaimType(e.target.value as "instant" | "scheduled" | "streaming")}
                         >
                           <option value="instant">Instant allocation</option>
                           <option value="scheduled">Scheduled payments</option>
