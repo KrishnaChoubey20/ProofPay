@@ -1,5 +1,7 @@
 # 🟠 Level 3 - Orange Belt Submission
 
+[![CI/CD Pipeline](https://github.com/KrishnaChoubey20/ProofPay/actions/workflows/ci.yml/badge.svg)](https://github.com/KrishnaChoubey20/ProofPay/actions)
+
 Welcome to the **Orange Belt (Level 3)** milestone of **ProofPay**! 
 Building on the wallet adapters and on-chain escrow of Level 2, we have upgraded ProofPay into a production-grade multi-contract architecture using the **Factory Pattern** for dynamic user vault deployments, added advanced **Time-Locked (Scheduled)** and **Linear Streaming** payroll flows, implemented automated CI/CD validation, and wrote comprehensive unit/integration test suites.
 

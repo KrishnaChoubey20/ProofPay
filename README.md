@@ -1,5 +1,7 @@
 # 💳 ProofPay
 
+[![CI/CD Pipeline](https://github.com/KrishnaChoubey20/ProofPay/actions/workflows/ci.yml/badge.svg)](https://github.com/KrishnaChoubey20/ProofPay/actions)
+
 > **Privacy-Preserving Payroll, Dynamic On-Chain Vaults & Real-Time Streams for Global Remote Teams**
 > 
 > ProofPay is a decentralized payroll platform built on **Stellar Testnet** and **Soroban Smart Contracts**. It allows employers to set up secure vault escrows, deploy dynamic custom vaults via an on-chain factory, schedule locked funds, stream real-time continuous payroll, and enables workers to claim their allocations in a secure, non-interactive manner.
