@@ -1,4 +1,5 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
+import { addressArg, xlmToStroopsArg } from "./contractArgs";
 
 // ── Network constants ────────────────────────────────────────────────────────
 export const STELLAR_EXPERT_TESTNET = "https://stellar.expert/explorer/testnet/tx";
@@ -14,11 +15,9 @@ export const rpc = new StellarSdk.rpc.Server(
   "https://soroban-testnet.stellar.org"
 );
 
-// ── Vault contract ID  (filled after deployment) ─────────────────────────────
-// Replace this placeholder with the real C… contract address after you run:
-//   stellar contract deploy ...
-export const VAULT_CONTRACT_ID: string =
-  "CD35FOUT64RGU4UKZQHCQPPDSPB7XIJ6AVRLFYN2NDR3MFJG5HL4VSRD";
+// ── Factory & Vault contract IDs ─────────────────────────────────────────────
+export const FACTORY_CONTRACT_ID = "CB4APYC7KJRCXO2AH6SLYNB3FSUZYBIYW2J47S4JXI6ILNQ7TX6X4RFX";
+export const VAULT_CONTRACT_ID = "CD35FOUT64RGU4UKZQHCQPPDSPB7XIJ6AVRLFYN2NDR3MFJG5HL4VSRD";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -107,12 +106,8 @@ export async function submitSignedTransaction(signedXdr: string) {
   return { hash: response.hash, ledger: response.ledger };
 }
 
-// ── Soroban contract helpers ──────────────────────────────────────────────────
+// ── Soroban contract invocation & submission ──────────────────────────────────
 
-/**
- * Build a simulated+assembled Soroban transaction XDR ready for signing.
- * Handles simulation and resource estimation automatically.
- */
 export async function invokeContract(
   sourceAddress: string,
   contractId: string,
@@ -135,7 +130,6 @@ export async function invokeContract(
 
   if (StellarSdk.rpc.Api.isSimulationError(simulation)) {
     const errMsg = (simulation as any).error;
-    // Surface InsufficientBalance for the fee-estimation check
     if (
       errMsg.toLowerCase().includes("balance") ||
       errMsg.toLowerCase().includes("insufficient")
@@ -152,9 +146,6 @@ export async function invokeContract(
   return tx.toXDR();
 }
 
-/**
- * Submit a signed Soroban transaction and poll until confirmation.
- */
 export async function submitSorobanTx(signedXdr: string): Promise<{
   hash: string;
   ledger?: number;
@@ -175,7 +166,7 @@ export async function submitSorobanTx(signedXdr: string): Promise<{
 
   const hash = sendResponse.hash;
 
-  // Poll until confirmed (NOT_FOUND = still processing)
+  // Poll until confirmed
   let attempt = 0;
   while (attempt < 30) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -199,16 +190,70 @@ export async function submitSorobanTx(signedXdr: string): Promise<{
   throw new Error(`Transaction timed out after 60 s. Hash: ${hash}`);
 }
 
-/**
- * Read a worker's claimable allocation directly from contract persistent storage.
- */
+// ── Factory operations ────────────────────────────────────────────────────────
+
+export async function getVaultFromFactory(
+  adminAddress: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<string | null> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(FACTORY_CONTRACT_ID);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_vault", addressArg(adminAddress)))
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
+      const val = (simulation as any).result.retval;
+      const native = StellarSdk.scValToNative(val);
+      return native ? String(native) : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function buildDeployVaultXdr(
+  sourceAddress: string,
+  vaultAdmin: string,
+  nativeTokenAddress: string,
+  saltHex?: string
+): Promise<string> {
+  let saltBytes = new Uint8Array(32);
+  if (saltHex) {
+    const matches = saltHex.match(/.{1,2}/g);
+    if (matches) {
+      const bytes = new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
+      saltBytes.set(bytes.slice(0, 32));
+    }
+  }
+  const salt = StellarSdk.xdr.ScVal.scvBytes(Buffer.from(saltBytes.buffer));
+  return invokeContract(
+    sourceAddress,
+    FACTORY_CONTRACT_ID,
+    "deploy_vault",
+    [
+      addressArg(vaultAdmin),
+      addressArg(nativeTokenAddress),
+      salt,
+    ]
+  );
+}
+
+// ── Vault query/view helpers ─────────────────────────────────────────────────
+
 export async function getContractAllocation(
   contractId: string,
   workerAddress: string
 ): Promise<bigint> {
   try {
-    // Build the Allocation(Address) persistent key using nativeToScVal for the contracttype enum variant
-    const workerScAddr = StellarSdk.Address.fromString(workerAddress).toScVal();
+    const workerScAddr = addressArg(workerAddress);
     const key = StellarSdk.xdr.ScVal.scvVec([
       StellarSdk.xdr.ScVal.scvSymbol("Allocation"),
       workerScAddr,
@@ -233,9 +278,6 @@ export async function getContractAllocation(
   }
 }
 
-/**
- * Query the total XLM deposited in the vault contract by simulating get_total_deposited call.
- */
 export async function getVaultTotalDeposited(
   contractId: string,
   sourceAddress: string
@@ -262,29 +304,201 @@ export async function getVaultTotalDeposited(
   }
 }
 
+export async function getScheduledAllocations(
+  vaultId: string,
+  workerAddress: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<{ amount: bigint; releaseTime: bigint }[]> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_scheduled_allocations", addressArg(workerAddress)))
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
+      const val = (simulation as any).result.retval;
+      const native = StellarSdk.scValToNative(val);
+      if (Array.isArray(native)) {
+        return native.map((item: any) => ({
+          amount: BigInt(item.amount),
+          releaseTime: BigInt(item.release_time),
+        }));
+      }
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getStreamDetails(
+  vaultId: string,
+  workerAddress: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<{ sender: string; totalAmount: bigint; startTime: bigint; endTime: bigint; claimedAmount: bigint } | null> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_stream", addressArg(workerAddress)))
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
+      const val = (simulation as any).result.retval;
+      const native = StellarSdk.scValToNative(val);
+      if (native) {
+        return {
+          sender: String(native.sender),
+          totalAmount: BigInt(native.total_amount),
+          startTime: BigInt(native.start_time),
+          endTime: BigInt(native.end_time),
+          claimedAmount: BigInt(native.claimed_amount),
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getStreamClaimable(
+  vaultId: string,
+  workerAddress: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<bigint> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_stream_claimable", addressArg(workerAddress)))
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation) && (simulation as any).result) {
+      const val = (simulation as any).result.retval;
+      return BigInt(StellarSdk.scValToNative(val));
+    }
+    return 0n;
+  } catch {
+    return 0n;
+  }
+}
+
+// ── Vault transaction builder helpers ────────────────────────────────────────
+
+export async function buildDepositScheduledXdr(
+  sourceAddress: string,
+  vaultId: string,
+  worker: string,
+  amountXlm: string,
+  releaseTimeSeconds: number
+): Promise<string> {
+  return invokeContract(
+    sourceAddress,
+    vaultId,
+    "deposit_scheduled",
+    [
+      addressArg(sourceAddress),
+      addressArg(worker),
+      xlmToStroopsArg(amountXlm),
+      StellarSdk.nativeToScVal(BigInt(releaseTimeSeconds), { type: "u64" }),
+    ]
+  );
+}
+
+export async function buildClaimScheduledXdr(
+  sourceAddress: string,
+  vaultId: string
+): Promise<string> {
+  return invokeContract(
+    sourceAddress,
+    vaultId,
+    "claim_scheduled",
+    [addressArg(sourceAddress)]
+  );
+}
+
+export async function buildCreateStreamXdr(
+  sourceAddress: string,
+  vaultId: string,
+  worker: string,
+  amountXlm: string,
+  startTimeSeconds: number,
+  endTimeSeconds: number
+): Promise<string> {
+  return invokeContract(
+    sourceAddress,
+    vaultId,
+    "create_stream",
+    [
+      addressArg(sourceAddress),
+      addressArg(worker),
+      xlmToStroopsArg(amountXlm),
+      StellarSdk.nativeToScVal(BigInt(startTimeSeconds), { type: "u64" }),
+      StellarSdk.nativeToScVal(BigInt(endTimeSeconds), { type: "u64" }),
+    ]
+  );
+}
+
+export async function buildClaimStreamXdr(
+  sourceAddress: string,
+  vaultId: string
+): Promise<string> {
+  return invokeContract(
+    sourceAddress,
+    vaultId,
+    "claim_stream",
+    [addressArg(sourceAddress)]
+  );
+}
+
 // ── Event streaming ───────────────────────────────────────────────────────────
 
 export type VaultEvent = {
-  type: "PayrollDeposited" | "PayrollClaimed";
+  type:
+    | "PayrollDeposited"
+    | "PayrollClaimed"
+    | "ScheduledDeposited"
+    | "ScheduledClaimed"
+    | "StreamCreated"
+    | "StreamClaimed";
   from?: string;
   worker: string;
   amount: bigint;
   ledger: number;
   txHash: string;
+  releaseTime?: bigint;
+  startTime?: bigint;
+  endTime?: bigint;
 };
 
-/**
- * Poll getEvents() for PayrollDeposited and PayrollClaimed events.
- * Calls `onEvent` for each new event found.
- * Returns a cleanup function to stop polling.
- */
 export function streamContractEvents(
-  contractId: string,
+  contractIds: string[],
   onEvent: (event: VaultEvent) => void,
   intervalMs = 5000
 ): () => void {
   let running = true;
   let lastLedger = 0;
+
+  // Filter out invalid/empty contract IDs
+  const activeContractIds = contractIds.filter(Boolean);
+  if (activeContractIds.length === 0) return () => {};
 
   async function poll() {
     if (!running) return;
@@ -304,7 +518,7 @@ export function streamContractEvents(
         filters: [
           {
             type: "contract",
-            contractIds: [contractId],
+            contractIds: activeContractIds,
             topics: [["*"]],
           },
         ],
@@ -333,6 +547,43 @@ export function streamContractEvents(
             } else if (topicStr === "payroll_claimed" && topics.length >= 3) {
               onEvent({
                 type: "PayrollClaimed",
+                worker: StellarSdk.Address.fromScVal(topics[1]).toString(),
+                amount: BigInt(StellarSdk.scValToNative(topics[2])),
+                ledger: evt.ledger,
+                txHash: evt.txHash,
+              });
+            } else if (topicStr === "scheduled_deposited" && topics.length >= 5) {
+              onEvent({
+                type: "ScheduledDeposited",
+                from: StellarSdk.Address.fromScVal(topics[1]).toString(),
+                worker: StellarSdk.Address.fromScVal(topics[2]).toString(),
+                amount: BigInt(StellarSdk.scValToNative(topics[3])),
+                releaseTime: BigInt(StellarSdk.scValToNative(topics[4])),
+                ledger: evt.ledger,
+                txHash: evt.txHash,
+              });
+            } else if (topicStr === "scheduled_claimed" && topics.length >= 3) {
+              onEvent({
+                type: "ScheduledClaimed",
+                worker: StellarSdk.Address.fromScVal(topics[1]).toString(),
+                amount: BigInt(StellarSdk.scValToNative(topics[2])),
+                ledger: evt.ledger,
+                txHash: evt.txHash,
+              });
+            } else if (topicStr === "stream_created" && topics.length >= 6) {
+              onEvent({
+                type: "StreamCreated",
+                from: StellarSdk.Address.fromScVal(topics[1]).toString(),
+                worker: StellarSdk.Address.fromScVal(topics[2]).toString(),
+                amount: BigInt(StellarSdk.scValToNative(topics[3])),
+                startTime: BigInt(StellarSdk.scValToNative(topics[4])),
+                endTime: BigInt(StellarSdk.scValToNative(topics[5])),
+                ledger: evt.ledger,
+                txHash: evt.txHash,
+              });
+            } else if (topicStr === "stream_claimed" && topics.length >= 3) {
+              onEvent({
+                type: "StreamClaimed",
                 worker: StellarSdk.Address.fromScVal(topics[1]).toString(),
                 amount: BigInt(StellarSdk.scValToNative(topics[2])),
                 ledger: evt.ledger,

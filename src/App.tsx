@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, FormEvent } from "react";
 import { useStellarWallet, WalletError, WalletErrorType } from "./hooks/useStellarWallet";
+import * as StellarSdk from "@stellar/stellar-sdk";
 import {
   buildPayrollPaymentXdr,
   getNativeBalance,
@@ -13,6 +14,16 @@ import {
   getVaultTotalDeposited,
   streamContractEvents,
   VAULT_CONTRACT_ID,
+  FACTORY_CONTRACT_ID,
+  getVaultFromFactory,
+  buildDeployVaultXdr,
+  getScheduledAllocations,
+  getStreamDetails,
+  getStreamClaimable,
+  buildDepositScheduledXdr,
+  buildClaimScheduledXdr,
+  buildCreateStreamXdr,
+  buildClaimStreamXdr,
   VaultEvent,
 } from "./lib/stellar";
 import {
@@ -34,6 +45,21 @@ type PayrollHistoryItem = {
   memo: string;
   hash: string;
   ledger?: number;
+};
+
+type ScheduledPaymentUI = {
+  amount: bigint;
+  releaseTime: bigint;
+  locked: boolean;
+  friendlyReleaseTime: string;
+};
+
+type StreamDetailsUI = {
+  sender: string;
+  totalAmount: bigint;
+  startTime: bigint;
+  endTime: bigint;
+  claimedAmount: bigint;
 };
 
 function shorten(address: string | null, lead = 6, tail = 6) {
@@ -83,6 +109,28 @@ function getWalletErrorKind(error: unknown): WalletErrorType {
   return "Unknown";
 }
 
+function calculateLiveStreamClaimable(stream: StreamDetailsUI | null): bigint {
+  if (!stream) return 0n;
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const start = BigInt(stream.startTime);
+  const end = BigInt(stream.endTime);
+  const total = BigInt(stream.totalAmount);
+  const claimed = BigInt(stream.claimedAmount);
+
+  let accrued = 0n;
+  if (now <= start) {
+    accrued = 0n;
+  } else if (now >= end) {
+    accrued = total;
+  } else {
+    const duration = end - start;
+    const elapsed = now - start;
+    accrued = (total * elapsed) / duration;
+  }
+  const claimable = accrued - claimed;
+  return claimable > 0n ? claimable : 0n;
+}
+
 export default function App() {
   const stellarWallet = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
@@ -92,6 +140,11 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<"send" | "vault">("send");
   const [vaultTab, setVaultTab] = useState<"deposit" | "claim">("deposit");
 
+  // Dynamic Vault states
+  const [customVaultId, setCustomVaultId] = useState<string | null>(null);
+  const [useCustomVault, setUseCustomVault] = useState(false);
+  const [vaultId, setVaultId] = useState(VAULT_CONTRACT_ID);
+
   // Send Payroll Panel states
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("1");
@@ -99,9 +152,21 @@ export default function App() {
   const [txStatus, setTxStatus] = useState<TransactionStatus>({ type: "idle" });
 
   // Vault Payroll Panel states
+  const [depositType, setDepositType] = useState<"instant" | "scheduled" | "streaming">("instant");
+  const [claimType, setClaimType] = useState<"instant" | "scheduled" | "streaming">("instant");
   const [vaultWorker, setVaultWorker] = useState("");
   const [vaultAmount, setVaultAmount] = useState("1");
+
+  // Scheduled / Streaming form inputs
+  const [releaseTime, setReleaseTime] = useState("");
+  const [streamStart, setStreamStart] = useState("");
+  const [streamEnd, setStreamEnd] = useState("");
+
+  // Vault Query state variables
   const [workerAllocation, setWorkerAllocation] = useState<bigint>(0n);
+  const [scheduledAllocations, setScheduledAllocations] = useState<ScheduledPaymentUI[]>([]);
+  const [streamDetails, setStreamDetails] = useState<StreamDetailsUI | null>(null);
+  const [liveStreamClaimable, setLiveStreamClaimable] = useState<bigint>(0n);
   const [vaultTotal, setVaultTotal] = useState<bigint>(0n);
   const [vaultTxStatus, setVaultTxStatus] = useState<TransactionStatus>({ type: "idle" });
 
@@ -118,10 +183,33 @@ export default function App() {
   const [isStreamingEvents, setIsStreamingEvents] = useState(false);
 
   const walletReady = Boolean(stellarWallet.connected && stellarWallet.address);
-  const onTestnet = true; // stellar-wallets-kit is configured for Testnet
-
   const activeError = localError || stellarWallet.error;
 
+  // Resolve dynamic vault ID based on custom vault toggle
+  useEffect(() => {
+    if (useCustomVault && customVaultId) {
+      setVaultId(customVaultId);
+    } else {
+      setVaultId(VAULT_CONTRACT_ID);
+    }
+  }, [useCustomVault, customVaultId]);
+
+  // Fetch admin's custom vault from factory
+  const checkCustomVault = useCallback(async () => {
+    if (!stellarWallet.address) return;
+    try {
+      const resolvedVault = await getVaultFromFactory(stellarWallet.address);
+      if (resolvedVault) {
+        setCustomVaultId(resolvedVault);
+      } else {
+        setCustomVaultId(null);
+      }
+    } catch (e) {
+      console.error("Failed to fetch custom vault", e);
+    }
+  }, [stellarWallet.address]);
+
+  // Load native balance
   const loadBalance = useCallback(async () => {
     if (!stellarWallet.address) return;
     try {
@@ -138,50 +226,88 @@ export default function App() {
     }
   }, [stellarWallet.address]);
 
+  // Load state from active vault
   const loadVaultState = useCallback(async () => {
-    if (!stellarWallet.address || VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE") return;
+    if (!stellarWallet.address || !vaultId || vaultId.startsWith("PLACEHOLDER")) return;
     try {
-      const alloc = await getContractAllocation(VAULT_CONTRACT_ID, stellarWallet.address);
+      // 1. Total pool deposits
+      const total = await getVaultTotalDeposited(vaultId, stellarWallet.address);
+      setVaultTotal(total);
+
+      // 2. Instant claimable allocation
+      const alloc = await getContractAllocation(vaultId, stellarWallet.address);
       setWorkerAllocation(alloc);
 
-      const total = await getVaultTotalDeposited(VAULT_CONTRACT_ID, stellarWallet.address);
-      setVaultTotal(total);
+      // 3. Scheduled allocations
+      const sched = await getScheduledAllocations(vaultId, stellarWallet.address);
+      const now = BigInt(Math.floor(Date.now() / 1000));
+      const mappedSched: ScheduledPaymentUI[] = sched.map((item) => ({
+        amount: item.amount,
+        releaseTime: item.releaseTime,
+        locked: item.releaseTime > now,
+        friendlyReleaseTime: new Date(Number(item.releaseTime) * 1000).toLocaleString(),
+      }));
+      setScheduledAllocations(mappedSched);
+
+      // 4. Streaming details
+      const stream = await getStreamDetails(vaultId, stellarWallet.address);
+      if (stream) {
+        setStreamDetails(stream);
+        setLiveStreamClaimable(calculateLiveStreamClaimable(stream));
+      } else {
+        setStreamDetails(null);
+        setLiveStreamClaimable(0n);
+      }
     } catch (e) {
       console.error("Failed to load vault state", e);
     }
-  }, [stellarWallet.address]);
+  }, [stellarWallet.address, vaultId]);
 
-  // Initial load when wallet becomes ready
+  // Run initial lookup and status setup
   useEffect(() => {
     if (walletReady) {
+      void checkCustomVault();
       void loadBalance();
       void loadVaultState();
     }
-  }, [loadBalance, loadVaultState, walletReady]);
+  }, [walletReady, checkCustomVault, loadBalance, loadVaultState]);
 
-  // Periodic polling for balance and vault state
+  // Polling updates
   useEffect(() => {
     if (!walletReady) return;
     const interval = setInterval(() => {
       void loadBalance();
       void loadVaultState();
-    }, 5000);
+    }, 6000);
     return () => clearInterval(interval);
-  }, [loadBalance, loadVaultState, walletReady]);
+  }, [walletReady, loadBalance, loadVaultState]);
 
-  // Real-time event streaming via Soroban RPC
+  // Live streaming ticker for streaming payroll claims
   useEffect(() => {
-    if (!walletReady || VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE") return;
+    if (!streamDetails) return;
+    const timer = setInterval(() => {
+      setLiveStreamClaimable(calculateLiveStreamClaimable(streamDetails));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [streamDetails]);
+
+  // Stream events from both default and custom vaults
+  useEffect(() => {
+    if (!walletReady) return;
+
+    const channels = [VAULT_CONTRACT_ID, FACTORY_CONTRACT_ID];
+    if (customVaultId) {
+      channels.push(customVaultId);
+    }
 
     setIsStreamingEvents(true);
-    const cleanup = streamContractEvents(VAULT_CONTRACT_ID, (newEvent) => {
+    const cleanup = streamContractEvents(channels, (newEvent) => {
       setActivityFeed((prev) => {
         if (prev.some((e) => e.txHash === newEvent.txHash && e.type === newEvent.type)) {
           return prev;
         }
         return [newEvent, ...prev];
       });
-      // Automatically refresh balance and vault state when an event occurs
       void loadVaultState();
       void loadBalance();
     });
@@ -190,7 +316,7 @@ export default function App() {
       cleanup();
       setIsStreamingEvents(false);
     };
-  }, [walletReady, loadVaultState, loadBalance]);
+  }, [walletReady, customVaultId, loadVaultState, loadBalance]);
 
   const clearErrors = () => {
     setLocalError(null);
@@ -224,6 +350,8 @@ export default function App() {
     setVaultTxStatus({ type: "idle" });
     setLocalError(null);
     setActivityFeed([]);
+    setCustomVaultId(null);
+    setUseCustomVault(false);
   }
 
   async function copyHash(hash: string, isVault = false) {
@@ -239,7 +367,79 @@ export default function App() {
     } catch (e) {}
   }
 
-  // classic send payroll
+  // Deploy dynamic vault via Factory
+  async function deployDynamicVault() {
+    if (sending) return;
+    clearErrors();
+    if (!stellarWallet.address) return;
+
+    setSending(true);
+    setVaultTxStatus({
+      type: "pending",
+      title: "Building Deploy Tx",
+      message: "Simulating on-chain vault deployment via ProofPay Factory…",
+    });
+
+    try {
+      const randomSaltHex = Array.from({ length: 32 }, () =>
+        Math.floor(Math.random() * 256).toString(16).padStart(2, "0")
+      ).join("");
+
+      const xdr = await buildDeployVaultXdr(
+        stellarWallet.address,
+        stellarWallet.address,
+        "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC", // Native XLM token SAC address
+        randomSaltHex
+      );
+
+      setVaultTxStatus({
+        type: "pending",
+        title: "Signing deployment",
+        message: "Sign the transaction to initialize your custom dynamic vault…",
+      });
+
+      const signedXdr = await stellarWallet.sign(xdr);
+
+      setVaultTxStatus({
+        type: "pending",
+        title: "Deploying vault",
+        message: "Broadcasting transaction to Testnet…",
+      });
+
+      const result = await submitSorobanTx(signedXdr);
+
+      // Extract vault address from return value
+      let newVaultAddress = "";
+      if (result.returnValue) {
+        newVaultAddress = String(StellarSdk.scValToNative(result.returnValue));
+      }
+
+      setVaultTxStatus({
+        type: "success",
+        title: "Dynamic Vault Deployed!",
+        message: `Successfully deployed your custom vault at address: ${newVaultAddress}`,
+        hash: result.hash,
+        ledger: result.ledger,
+      });
+
+      await checkCustomVault();
+      setUseCustomVault(true);
+      await loadBalance();
+    } catch (error) {
+      const errKind = getWalletErrorKind(error);
+      const walletErr = error instanceof WalletError ? error : new WalletError(errKind, friendlyErr(error));
+      setLocalError(walletErr);
+      setVaultTxStatus({
+        type: "error",
+        title: "Deployment Failed",
+        message: walletErr.message,
+      });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Classic send payroll
   async function sendPayroll(e?: FormEvent) {
     if (e) e.preventDefault();
     if (sending) return;
@@ -341,7 +541,7 @@ export default function App() {
     }
   }
 
-  // Soroban vault deposit
+  // Soroban vault deposits (handles standard, scheduled, and streaming)
   async function depositToVault(e: FormEvent) {
     e.preventDefault();
     if (sending) return;
@@ -356,11 +556,11 @@ export default function App() {
       return;
     }
 
-    if (VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE") {
+    if (!vaultId || vaultId.startsWith("PLACEHOLDER")) {
       setVaultTxStatus({
         type: "error",
         title: "Contract Not Deployed",
-        message: "Please deploy the vault contract and set VAULT_CONTRACT_ID in stellar.ts.",
+        message: "No active vault selected. Deploy a dynamic vault or set default.",
       });
       return;
     }
@@ -389,22 +589,54 @@ export default function App() {
     setVaultTxStatus({
       type: "pending",
       title: "Simulating deposit",
-      message: "Estimating resources for depositing XLM into Vault…",
+      message: `Estimating resources for ${depositType} deposit into Vault…`,
     });
 
     try {
-      const args = [
-        addressArg(stellarWallet.address),
-        addressArg(trimmedWorker),
-        xlmToStroopsArg(vaultAmount),
-      ];
+      let xdr = "";
 
-      const xdr = await invokeContract(
-        stellarWallet.address,
-        VAULT_CONTRACT_ID,
-        "deposit",
-        args
-      );
+      if (depositType === "instant") {
+        const args = [
+          addressArg(stellarWallet.address),
+          addressArg(trimmedWorker),
+          xlmToStroopsArg(vaultAmount),
+        ];
+        xdr = await invokeContract(
+          stellarWallet.address,
+          vaultId,
+          "deposit",
+          args
+        );
+      } else if (depositType === "scheduled") {
+        if (!releaseTime) {
+          throw new Error("Specify a release date and time for the scheduled payment.");
+        }
+        const releaseTimeSecs = Math.floor(new Date(releaseTime).getTime() / 1000);
+        xdr = await buildDepositScheduledXdr(
+          stellarWallet.address,
+          vaultId,
+          trimmedWorker,
+          vaultAmount,
+          releaseTimeSecs
+        );
+      } else if (depositType === "streaming") {
+        if (!streamStart || !streamEnd) {
+          throw new Error("Specify start and end dates/times for the streaming payment.");
+        }
+        const startSecs = Math.floor(new Date(streamStart).getTime() / 1000);
+        const endSecs = Math.floor(new Date(streamEnd).getTime() / 1000);
+        if (startSecs >= endSecs) {
+          throw new Error("Start date must be earlier than the end date.");
+        }
+        xdr = await buildCreateStreamXdr(
+          stellarWallet.address,
+          vaultId,
+          trimmedWorker,
+          vaultAmount,
+          startSecs,
+          endSecs
+        );
+      }
 
       setVaultTxStatus({
         type: "pending",
@@ -425,13 +657,16 @@ export default function App() {
       setVaultTxStatus({
         type: "success",
         title: "Vault deposit success!",
-        message: `${vaultAmount} XLM has been deposited in the vault for ${shorten(trimmedWorker, 6, 6)}.`,
+        message: `${vaultAmount} XLM has been deposited in the vault (${depositType}) for ${shorten(trimmedWorker, 6, 6)}.`,
         hash: result.hash,
         ledger: result.ledger,
       });
 
       setVaultWorker("");
       setVaultAmount("1");
+      setReleaseTime("");
+      setStreamStart("");
+      setStreamEnd("");
       await loadVaultState();
       await loadBalance();
     } catch (error) {
@@ -448,7 +683,7 @@ export default function App() {
     }
   }
 
-  // Soroban vault claim
+  // Soroban claims (instant, scheduled, and streaming)
   async function claimFromVault() {
     if (sending) return;
     clearErrors();
@@ -462,20 +697,11 @@ export default function App() {
       return;
     }
 
-    if (VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE") {
+    if (!vaultId || vaultId.startsWith("PLACEHOLDER")) {
       setVaultTxStatus({
         type: "error",
         title: "Contract Not Deployed",
-        message: "Please deploy the vault contract and set VAULT_CONTRACT_ID in stellar.ts.",
-      });
-      return;
-    }
-
-    if (workerAllocation <= 0n) {
-      setVaultTxStatus({
-        type: "error",
-        title: "No allocation",
-        message: "You do not have any claimable allocation in the vault.",
+        message: "No active vault selected. Deploy a dynamic vault or set default.",
       });
       return;
     }
@@ -484,18 +710,35 @@ export default function App() {
     setVaultTxStatus({
       type: "pending",
       title: "Simulating claim",
-      message: "Estimating resources for claiming your payroll allocation…",
+      message: `Estimating resources for claiming your ${claimType} payroll allocation…`,
     });
 
     try {
-      const args = [addressArg(stellarWallet.address)];
+      let xdr = "";
 
-      const xdr = await invokeContract(
-        stellarWallet.address,
-        VAULT_CONTRACT_ID,
-        "claim",
-        args
-      );
+      if (claimType === "instant") {
+        if (workerAllocation <= 0n) {
+          throw new Error("You do not have any claimable allocation in the vault.");
+        }
+        const args = [addressArg(stellarWallet.address)];
+        xdr = await invokeContract(
+          stellarWallet.address,
+          vaultId,
+          "claim",
+          args
+        );
+      } else if (claimType === "scheduled") {
+        const hasUnlocked = scheduledAllocations.some((item) => !item.locked);
+        if (!hasUnlocked) {
+          throw new Error("No unlocked scheduled allocations found for your wallet.");
+        }
+        xdr = await buildClaimScheduledXdr(stellarWallet.address, vaultId);
+      } else if (claimType === "streaming") {
+        if (liveStreamClaimable <= 0n) {
+          throw new Error("No claimable streaming funds accrued yet.");
+        }
+        xdr = await buildClaimStreamXdr(stellarWallet.address, vaultId);
+      }
 
       setVaultTxStatus({
         type: "pending",
@@ -512,13 +755,11 @@ export default function App() {
       });
 
       const result = await submitSorobanTx(signedXdr);
-      
-      const claimedAmountXlm = stroopsToXlm(workerAllocation);
 
       setVaultTxStatus({
         type: "success",
         title: "Payroll claimed!",
-        message: `Successfully claimed ${claimedAmountXlm} XLM from the vault.`,
+        message: `Successfully claimed accrued ${claimType} payroll from the vault.`,
         hash: result.hash,
         ledger: result.ledger,
       });
@@ -547,6 +788,21 @@ export default function App() {
 
   const formattedBalance = balance ? Number(balance).toLocaleString(undefined, { maximumFractionDigits: 7 }) : "—";
   const walletName = stellarWallet.walletId ? stellarWallet.walletId.charAt(0).toUpperCase() + stellarWallet.walletId.slice(1) : "Stellar Wallet";
+
+  // Calculate stream progress
+  let streamProgress = 0;
+  if (streamDetails) {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const start = BigInt(streamDetails.startTime);
+    const end = BigInt(streamDetails.endTime);
+    if (now >= end) {
+      streamProgress = 100;
+    } else if (now <= start) {
+      streamProgress = 0;
+    } else {
+      streamProgress = Number(((now - start) * 100n) / (end - start));
+    }
+  }
 
   const renderErrorToast = () => {
     if (!activeError) return null;
@@ -656,14 +912,14 @@ export default function App() {
               <div>
                 <div className="hero-badge">
                   <span className="dot"></span>
-                  <span>Stellar Yellow Belt Submission</span>
+                  <span>Stellar Orange Belt Submission</span>
                 </div>
                 <h1 className="display">
-                  Private payroll,<br />
-                  <em>proven on-chain.</em>
+                  Dynamic payroll,<br />
+                  <em>streamed in real-time.</em>
                 </h1>
                 <p className="hero-sub">
-                  ProofPay Yellow Belt enables multi-wallet wallet connections to Stellar Testnet, integrates on-chain escrow via a Rust Soroban Vault, and streams live payout history in real time.
+                  ProofPay Orange Belt upgrades to a dynamic Factory pattern. Deploy your own custom payroll vaults, schedule locked funds, and stream real-time continuous payroll on Stellar Testnet.
                 </p>
                 <div className="hero-actions">
                   <button className="btn-primary" onClick={connectWallet} disabled={sending}>
@@ -686,243 +942,77 @@ export default function App() {
                     </svg>
                   </a>
                 </div>
-                <div className="hero-trust">
-                  <div className="trust-item">
-                    <svg className="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    </svg>
-                    StellarWalletsKit (Multi-Wallet)
-                  </div>
-                  <div className="trust-item">
-                    <svg className="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
-                    </svg>
-                    Soroban RPC Integration
-                  </div>
-                  <div className="trust-item">
-                    <svg className="trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Payroll Vault Contract
-                  </div>
-                </div>
               </div>
               <div className="hero-card">
                 <div className="card-header">
-                  <span className="card-title">ProofPay Yellow Belt</span>
+                  <span className="card-title">Dynamic Factory & Streams</span>
                   <span className="status-chip connected">
-                    <span className="dot"></span>Connected
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
-                  <span className="status-chip testnet">
-                    <span className="dot"></span>Stellar Testnet
+                    <span className="dot"></span>Ready
                   </span>
                 </div>
                 <div className="balance-block">
-                  <div className="balance-label">Available balance</div>
+                  <div className="balance-label">Total Streamed</div>
                   <div>
-                    <span className="balance-amount">9,842</span>
+                    <span className="balance-amount">1,520</span>
                     <span className="balance-unit">XLM</span>
-                  </div>
-                  <div style={{ fontSize: "0.76rem", color: "var(--ink-muted)", marginTop: "5px" }}>
-                    GACT...K7WM · Testnet
-                  </div>
-                </div>
-                <div style={{ marginTop: "14px" }}>
-                  <div style={{ fontSize: "0.75rem", color: "var(--ink-muted)", marginBottom: "9px", fontWeight: 600, letterSpacing: "0.04em" }}>
-                    RECENT PAYROLLS
-                  </div>
-                  <div className="tx-row">
-                    <div className="tx-info">
-                      <div className="tx-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" strokeWidth="2">
-                          <line x1="12" y1="1" x2="12" y2="23" />
-                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                        </svg>
-                      </div>
-                      <div>
-                        <div className="tx-label">Payroll #01</div>
-                        <div className="tx-sub">GDX5...M2N4</div>
-                      </div>
-                    </div>
-                    <span className="tx-amt">+250 XLM</span>
-                  </div>
-                  <div className="tx-row">
-                    <div className="tx-info">
-                      <div className="tx-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" strokeWidth="2">
-                          <line x1="12" y1="1" x2="12" y2="23" />
-                          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                        </svg>
-                      </div>
-                      <div>
-                        <div className="tx-label">Payroll #02</div>
-                        <div className="tx-sub">GDX5...M2N4</div>
-                      </div>
-                    </div>
-                    <span className="tx-amt">+100 XLM</span>
                   </div>
                 </div>
                 <div className="mock-send-btn">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
-                  Send Test Payroll
+                  Launch App Dashboard
                 </div>
               </div>
             </div>
           </div>
         </section>
-
-        <section className="how-it-works">
-          <div className="container">
-            <div className="section-head">
-              <p className="eyebrow">Transaction flow</p>
-              <h2 className="display">How ProofPay works</h2>
-              <p>Four steps from wallet connection to a verified on-chain payroll receipt.</p>
-            </div>
-            <div className="steps-grid">
-              <div className="step">
-                <div className="step-num">01</div>
-                <div className="step-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="2" y="5" width="20" height="14" rx="2" />
-                    <line x1="2" y1="10" x2="22" y2="10" />
-                  </svg>
-                </div>
-                <h3>Connect Wallet</h3>
-                <p>Select your favorite wallet extension (Freighter, LOBSTR, xBull) using StellarWalletsKit.</p>
-              </div>
-              <div className="step">
-                <div className="step-num">02</div>
-                <div className="step-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                </div>
-                <h3>Manage Vault</h3>
-                <p>Employers allocate payroll to worker addresses using the smart contract vault.</p>
-              </div>
-              <div className="step">
-                <div className="step-num">03</div>
-                <div className="step-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
-                </div>
-                <h3>Worker Claim</h3>
-                <p>Workers trigger claim() on-chain to pull their assigned XLM allocations instantly.</p>
-              </div>
-              <div className="step">
-                <div className="step-num">04</div>
-                <div className="step-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                  </svg>
-                </div>
-                <h3>Activity Feed</h3>
-                <p>On-chain contract events are streamed in real time to show live payroll operations.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="tech-section">
-          <div className="container">
-            <div className="section-head">
-              <p className="eyebrow">Technology</p>
-              <h2 className="display">Built on proven tools</h2>
-              <p>A lean, well-typed stack for Stellar-native development.</p>
-            </div>
-            <div className="tech-grid">
-              <div className="tech-card">
-                <div className="tech-icon" style={{ background: "#F0F4FF" }}>⚛️</div>
-                <h3>React + TypeScript</h3>
-                <p>Typed, component-driven UI with strict compiler settings and full ESLint coverage.</p>
-              </div>
-              <div className="tech-card">
-                <div className="tech-icon" style={{ background: "#FFFBEA" }}>⚡</div>
-                <h3>StellarWalletsKit</h3>
-                <p>Multi-wallet adapter that allows Freighter, LOBSTR, xBull, and other standard wallets.</p>
-              </div>
-              <div className="tech-card">
-                <div className="tech-icon" style={{ background: "#EEF6F1" }}>🦀</div>
-                <h3>Soroban Rust Contract</h3>
-                <p>A secure on-chain payroll vault with atomic state changes, events, and TTL management.</p>
-              </div>
-              <div className="tech-card">
-                <div className="tech-icon" style={{ background: "#F6F2EA" }}>🛰️</div>
-                <h3>Soroban RPC client</h3>
-                <p>Submit transactions, simulate invocations, read ledger states, and stream events directly.</p>
-              </div>
-              <div className="tech-card">
-                <div className="tech-icon" style={{ background: "#F0FAF4" }}>🚀</div>
-                <h3>Testnet Horizon</h3>
-                <p>Public Testnet API — free, no key needed, always live at horizon-testnet.stellar.org.</p>
-              </div>
-              <div className="tech-card">
-                <div className="tech-icon" style={{ background: "#FFF5F5" }}>🔗</div>
-                <h3>StellarExpert</h3>
-                <p>Explorer link shown in every success receipt for independent transaction verification.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <footer>
-          <div className="container">
-            <div className="footer-inner">
-              <div className="footer-brand">
-                <h3>ProofPay Yellow Belt</h3>
-                <p>A Stellar Testnet payroll platform prototype for the Stellar Journey to Mastery challenge.</p>
-              </div>
-              <div className="footer-links">
-                <div className="footer-col">
-                  <h4>Resources</h4>
-                  <ul>
-                    <li><a href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">GitHub repository</a></li>
-                    <li><a href="https://friendbot.stellar.org" target="_blank" rel="noreferrer">Stellar Friendbot</a></li>
-                    <li><a href="https://stellar.expert/explorer/testnet" target="_blank" rel="noreferrer">StellarExpert Testnet</a></li>
-                    <li><a href="https://www.freighter.app" target="_blank" rel="noreferrer">Freighter wallet</a></li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            <div className="footer-bottom">
-              <p>ProofPay Yellow Belt · Stellar Yellow Belt · React + Vite + Stellar SDK v13</p>
-              <a className="github-link" href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                </svg>
-                KrishnaChoubey20/ProofPay
-              </a>
-            </div>
-          </div>
-        </footer>
       </div>
 
       {/* ══ DASHBOARD ══ */}
       <div id="view-dashboard" style={{ display: walletReady ? "block" : "none" }}>
         <div className="container">
+          
           <div className="dash-topbar">
             <div className="dash-greeting">
               <h2>Payroll Dashboard</h2>
               <p id="dash-addr-line">Connected with {walletName} on Stellar Testnet</p>
             </div>
-            <button className="btn-outline" onClick={loadBalance} id="btn-refresh" style={{ gap: "7px", padding: "9px 16px", fontSize: "0.86rem" }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
+            <button className="btn-outline" onClick={loadBalance} id="btn-refresh">
               Refresh balance
             </button>
+          </div>
+
+          {/* Dynamic Factory Deployment Panel */}
+          <div className="panel" style={{ marginBottom: "18px" }}>
+            <div className="panel-head">
+              <h3>Dynamic Vault Factory</h3>
+            </div>
+            
+            {customVaultId ? (
+              <div className="vault-toggle-container">
+                <div>
+                  <div className="vault-toggle-label">Dynamic Vault Routing</div>
+                  <span style={{ fontSize: "0.78rem", color: "var(--ink-muted)" }}>
+                    Dynamic vault deployed: <code>{shorten(customVaultId, 8, 8)}</code>
+                  </span>
+                </div>
+                <label className="vault-toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={useCustomVault}
+                    onChange={(e) => setUseCustomVault(e.target.checked)}
+                  />
+                  <span className="vault-toggle-slider"></span>
+                </label>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "10px" }}>
+                <div className="notice warn" style={{ margin: 0 }}>
+                  You have not deployed a dynamic vault yet.
+                </div>
+                <button className="btn-outline" onClick={deployDynamicVault} disabled={sending}>
+                  {sending ? "Deploying…" : "Deploy Custom Vault via Factory"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="stat-cards">
@@ -935,44 +1025,38 @@ export default function App() {
               <div className="sc-sub" id="sc-balance-sub">{balanceMessage}</div>
             </div>
             <div className="stat-card">
-              <div className="sc-label">CONNECTED WALLET</div>
-              <div className="sc-value" id="sc-network" style={{ fontSize: "1.5rem", color: "var(--sage)" }}>
-                {walletName}
+              <div className="sc-label">ACTIVE VAULT</div>
+              <div className="sc-value" id="sc-network" style={{ fontSize: "1.2rem", color: "var(--sage)", wordBreak: "break-all" }}>
+                {shorten(vaultId, 8, 8)}
               </div>
               <div className="sc-sub" id="sc-network-sub">
-                Stellar Test SDF Network
+                {useCustomVault ? "Custom Dynamic Vault" : "Default Shared Vault"}
               </div>
             </div>
             <div className="stat-card">
-              <div className="sc-label">TRANSACTIONS SENT</div>
-              <div><span className="sc-value" id="sc-tx-count">{txCount}</span></div>
-              <div className="sc-sub">This session</div>
+              <div className="sc-label">TOTAL VAULT BALANCE</div>
+              <div>
+                <span className="sc-value">{stroopsToXlm(vaultTotal)}</span>
+                <span className="sc-unit">XLM</span>
+              </div>
+              <div className="sc-sub">Assets in active vault pool</div>
             </div>
           </div>
 
           <div className="dash-grid">
             <div style={{ display: "grid", gap: "18px" }}>
               
-              {/* Tab Bar switcher for Panels */}
               <div className="tab-bar">
                 <button 
                   className={`tab-btn ${activePanel === "send" ? "active" : ""}`}
                   onClick={() => { setActivePanel("send"); clearErrors(); }}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="22" y1="2" x2="11" y2="13" />
-                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                  </svg>
                   Send Direct Payroll
                 </button>
                 <button 
                   className={`tab-btn ${activePanel === "vault" ? "active" : ""}`}
                   onClick={() => { setActivePanel("vault"); clearErrors(); }}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
                   Smart Payroll Vault
                 </button>
               </div>
@@ -1021,14 +1105,6 @@ export default function App() {
                       </label>
                     </div>
                     <button id="btn-send" type="submit" disabled={sending}>
-                      {sending ? (
-                        <span className="spin">↻</span>
-                      ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <line x1="22" y1="2" x2="11" y2="13" />
-                          <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                        </svg>
-                      )}
                       {sending ? " Processing…" : " Send Test Payroll"}
                     </button>
                   </form>
@@ -1053,11 +1129,6 @@ export default function App() {
                               View on StellarExpert ↗
                             </a>
                           </div>
-                          {txStatus.ledger && (
-                            <div style={{ fontSize: "0.76rem", color: "var(--ink-muted)", marginTop: "6px" }}>
-                              Ledger: {txStatus.ledger}
-                            </div>
-                          )}
                         </>
                       )}
                     </div>
@@ -1068,30 +1139,19 @@ export default function App() {
               {/* Panel 2: Smart Vault escrow */}
               {activePanel === "vault" && (
                 <div className="panel">
-                  <div className="panel-head"><h3>Smart Payroll Vault</h3></div>
+                  <div className="panel-head"><h3>Smart Payroll Vault Operations</h3></div>
 
-                  {/* Contract state badge */}
                   <div className="contract-badge">
                     <div style={{ flex: 1, minWidth: 0, marginRight: "10px" }}>
-                      <span style={{ fontSize: "0.74rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>VAULT CONTRACT ID</span>
-                      <code>{VAULT_CONTRACT_ID}</code>
+                      <span style={{ fontSize: "0.74rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>ACTIVE VAULT CONTRACT ID</span>
+                      <code>{vaultId}</code>
                     </div>
                     <button className="copy-btn" onClick={() => {
-                      navigator.clipboard.writeText(VAULT_CONTRACT_ID);
+                      navigator.clipboard.writeText(vaultId);
                     }}>
                       Copy
                     </button>
                   </div>
-
-                  {VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE" ? (
-                    <div className="notice warn" style={{ fontSize: "0.82rem", padding: "10px" }}>
-                      <strong>Contract not deployed yet.</strong> Build and deploy the Rust contract to Testnet, then update <code>VAULT_CONTRACT_ID</code> in <code>stellar.ts</code>.
-                    </div>
-                  ) : (
-                    <div className="notice info" style={{ fontSize: "0.82rem", padding: "10px" }}>
-                      Vault Total Deposited Asset Pool: <strong>{stroopsToXlm(vaultTotal)} XLM</strong>
-                    </div>
-                  )}
 
                   {renderErrorToast()}
 
@@ -1113,6 +1173,19 @@ export default function App() {
                   {vaultTab === "deposit" && (
                     <form className="send-form" onSubmit={depositToVault}>
                       <label className="form-label">
+                        Deposit Flow Type
+                        <select 
+                          className="form-select"
+                          value={depositType}
+                          onChange={(e) => setDepositType(e.target.value as any)}
+                        >
+                          <option value="instant">Instant allocation</option>
+                          <option value="scheduled">Scheduled release (Time-locked)</option>
+                          <option value="streaming">Streaming payroll (Continuous)</option>
+                        </select>
+                      </label>
+
+                      <label className="form-label">
                         Worker Address (G…)
                         <input
                           placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
@@ -1122,6 +1195,7 @@ export default function App() {
                           onChange={(e) => setVaultWorker(e.target.value)}
                         />
                       </label>
+
                       <label className="form-label">
                         Amount (XLM)
                         <input
@@ -1133,49 +1207,145 @@ export default function App() {
                           onChange={(e) => setVaultAmount(e.target.value)}
                         />
                       </label>
-                      <button id="btn-send" type="submit" disabled={sending || VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE"}>
-                        {sending ? (
-                          <span className="spin">↻</span>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                          </svg>
-                        )}
-                        {sending ? " Depositing…" : " Deposit to Vault"}
+
+                      {depositType === "scheduled" && (
+                        <label className="form-label">
+                          Release Date & Time
+                          <input
+                            type="datetime-local"
+                            value={releaseTime}
+                            onChange={(e) => setReleaseTime(e.target.value)}
+                          />
+                        </label>
+                      )}
+
+                      {depositType === "streaming" && (
+                        <div className="form-row-2">
+                          <label className="form-label">
+                            Stream Start Time
+                            <input
+                              type="datetime-local"
+                              value={streamStart}
+                              onChange={(e) => setStreamStart(e.target.value)}
+                            />
+                          </label>
+                          <label className="form-label">
+                            Stream End Time
+                            <input
+                              type="datetime-local"
+                              value={streamEnd}
+                              onChange={(e) => setStreamEnd(e.target.value)}
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      <button id="btn-send" type="submit" disabled={sending}>
+                        {sending ? " Depositing…" : ` Deposit (${depositType})`}
                       </button>
                     </form>
                   )}
 
                   {vaultTab === "claim" && (
                     <div style={{ display: "grid", gap: "16px" }}>
-                      <div className="stat-card" style={{ background: "var(--cream)", borderStyle: "dashed" }}>
-                        <div className="sc-label">YOUR CLAIMABLE ALLOCATION</div>
-                        <div style={{ display: "flex", alignItems: "baseline" }}>
-                          <span className="sc-value" style={{ fontSize: "2rem" }}>
-                            {stroopsToXlm(workerAllocation)}
-                          </span>
-                          <span className="sc-unit">XLM</span>
+                      
+                      <label className="form-label">
+                        Claim Flow Type
+                        <select 
+                          className="form-select"
+                          value={claimType}
+                          onChange={(e) => setClaimType(e.target.value as any)}
+                        >
+                          <option value="instant">Instant allocation</option>
+                          <option value="scheduled">Scheduled payments</option>
+                          <option value="streaming">Active stream progress</option>
+                        </select>
+                      </label>
+
+                      {claimType === "instant" && (
+                        <div className="stat-card" style={{ background: "var(--cream)", borderStyle: "dashed" }}>
+                          <div className="sc-label">CLAIMABLE INSTANT ALLOCATION</div>
+                          <div style={{ display: "flex", alignItems: "baseline" }}>
+                            <span className="sc-value" style={{ fontSize: "2rem" }}>
+                              {stroopsToXlm(workerAllocation)}
+                            </span>
+                            <span className="sc-unit">XLM</span>
+                          </div>
                         </div>
-                        <div className="sc-sub">Claim payroll instantly to your connected address.</div>
-                      </div>
+                      )}
+
+                      {claimType === "scheduled" && (
+                        <div style={{ display: "grid", gap: "10px" }}>
+                          <div className="sc-label">Scheduled payouts</div>
+                          {scheduledAllocations.length === 0 ? (
+                            <div className="hist-empty">No scheduled payouts found for your wallet.</div>
+                          ) : (
+                            scheduledAllocations.map((item, idx) => (
+                              <div className="allocation-item" key={idx}>
+                                <div>
+                                  <strong>{stroopsToXlm(item.amount)} XLM</strong>
+                                  <div style={{ fontSize: "0.74rem", color: "var(--ink-muted)" }}>
+                                    Release: {item.friendlyReleaseTime}
+                                  </div>
+                                </div>
+                                <span className={`allocation-status ${item.locked ? "locked" : "unlocked"}`}>
+                                  {item.locked ? "Locked" : "Unlocked"}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+
+                      {claimType === "streaming" && (
+                        <div style={{ display: "grid", gap: "10px" }}>
+                          <div className="sc-label">Streaming payroll status</div>
+                          {streamDetails ? (
+                            <div className="stat-card" style={{ background: "var(--cream)", padding: "14px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem" }}>
+                                <span>Sender: {shorten(streamDetails.sender, 5, 5)}</span>
+                                <strong>{streamProgress}% Claimed/Accrued</strong>
+                              </div>
+
+                              <div className="progress-container">
+                                <div className="progress-bar" style={{ width: `${streamProgress}%` }}></div>
+                              </div>
+
+                              <div className="stream-info-grid">
+                                <div className="stream-stat">
+                                  <div className="stream-stat-label">Total Stream</div>
+                                  <div className="stream-stat-val">{stroopsToXlm(streamDetails.totalAmount)} XLM</div>
+                                </div>
+                                <div className="stream-stat">
+                                  <div className="stream-stat-label">Claimed Already</div>
+                                  <div className="stream-stat-val">{stroopsToXlm(streamDetails.claimedAmount)} XLM</div>
+                                </div>
+                              </div>
+
+                              <div style={{ marginTop: "12px", borderTop: "1px dashed var(--border)", paddingTop: "8px", textAlign: "center" }}>
+                                <div className="sc-label" style={{ marginBottom: "2px" }}>ACCRUED CLAIMABLE (TICKING)</div>
+                                <span style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--sage)" }}>
+                                  {stroopsToXlm(liveStreamClaimable)} XLM
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="hist-empty">No active stream found for your wallet.</div>
+                          )}
+                        </div>
+                      )}
 
                       <button 
                         id="btn-send" 
                         onClick={claimFromVault} 
-                        disabled={sending || workerAllocation === 0n || VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE"}
-                        style={{ background: workerAllocation > 0n ? "var(--sage)" : "var(--ink-muted)" }}
+                        disabled={
+                          sending || 
+                          (claimType === "instant" && workerAllocation === 0n) ||
+                          (claimType === "scheduled" && !scheduledAllocations.some(item => !item.locked)) ||
+                          (claimType === "streaming" && liveStreamClaimable === 0n)
+                        }
                       >
-                        {sending ? (
-                          <span className="spin">↻</span>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <polyline points="21 15 16 20 11 15" />
-                            <line x1="16" y1="10" x2="16" y2="20" />
-                            <path d="M4 4h18" />
-                          </svg>
-                        )}
-                        {sending ? " Claiming…" : " Claim Payroll"}
+                        {sending ? " Claiming…" : ` Claim (${claimType})`}
                       </button>
                     </div>
                   )}
@@ -1253,36 +1423,55 @@ export default function App() {
                   </div>
                 </div>
                 
-                {VAULT_CONTRACT_ID === "PLACEHOLDER_DEPLOY_CONTRACT_ID_HERE" ? (
-                  <div className="hist-empty">Deploy contract to stream real-time activity feed.</div>
-                ) : activityFeed.length === 0 ? (
+                {activityFeed.length === 0 ? (
                   <div className="hist-empty">Waiting for contract events... Try depositing XLM.</div>
                 ) : (
                   <div className="activity-feed">
                     {activityFeed.map((evt, idx) => (
                       <div className="feed-item" key={evt.txHash + evt.type + idx}>
-                        <div className={`feed-icon ${evt.type === "PayrollDeposited" ? "deposit" : "claim"}`}>
-                          {evt.type === "PayrollDeposited" ? (
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <polyline points="19 12 12 19 5 12" />
-                            </svg>
-                          ) : (
+                        <div className={`feed-icon ${evt.type.includes("Claim") ? "claim" : "deposit"}`}>
+                          {evt.type.includes("Claim") ? (
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                               <line x1="12" y1="19" x2="12" y2="5" />
                               <polyline points="5 12 12 5 19 12" />
+                            </svg>
+                          ) : (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <polyline points="19 12 12 19 5 12" />
                             </svg>
                           )}
                         </div>
                         <div className="feed-content">
                           <div className="feed-title">
-                            {evt.type === "PayrollDeposited" ? (
+                            {evt.type === "PayrollDeposited" && (
                               <span>
                                 <strong>{stroopsToXlm(evt.amount)} XLM</strong> deposited for <strong>{shorten(evt.worker, 4, 4)}</strong>
                               </span>
-                            ) : (
+                            )}
+                            {evt.type === "PayrollClaimed" && (
                               <span>
                                 <strong>{shorten(evt.worker, 4, 4)}</strong> claimed <strong>{stroopsToXlm(evt.amount)} XLM</strong>
+                              </span>
+                            )}
+                            {evt.type === "ScheduledDeposited" && (
+                              <span>
+                                <strong>{stroopsToXlm(evt.amount)} XLM</strong> scheduled (time-locked) for <strong>{shorten(evt.worker, 4, 4)}</strong>
+                              </span>
+                            )}
+                            {evt.type === "ScheduledClaimed" && (
+                              <span>
+                                <strong>{shorten(evt.worker, 4, 4)}</strong> claimed scheduled <strong>{stroopsToXlm(evt.amount)} XLM</strong>
+                              </span>
+                            )}
+                            {evt.type === "StreamCreated" && (
+                              <span>
+                                <strong>{stroopsToXlm(evt.amount)} XLM</strong> stream initialized for <strong>{shorten(evt.worker, 4, 4)}</strong>
+                              </span>
+                            )}
+                            {evt.type === "StreamClaimed" && (
+                              <span>
+                                <strong>{shorten(evt.worker, 4, 4)}</strong> claimed stream <strong>{stroopsToXlm(evt.amount)} XLM</strong>
                               </span>
                             )}
                           </div>
