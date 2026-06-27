@@ -303,7 +303,8 @@ export default function App() {
       void loadVaultState();
       void scanVaultsForPayroll();
     }
-  }, [walletReady, checkCustomVault, loadBalance, loadVaultState, scanVaultsForPayroll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletReady]);
 
   // Polling updates
   useEffect(() => {
