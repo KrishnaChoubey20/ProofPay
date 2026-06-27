@@ -14,6 +14,7 @@ import {
   VAULT_CONTRACT_ID,
   FACTORY_CONTRACT_ID,
   getVaultFromFactory,
+  getAllVaultsFromFactory,
   buildDeployVaultXdr,
   getScheduledAllocations,
   getStreamDetails,
@@ -141,6 +142,8 @@ export default function App() {
   const [customVaultId, setCustomVaultId] = useState<string | null>(null);
   const [useCustomVault, setUseCustomVault] = useState(false);
   const [vaultId, setVaultId] = useState(VAULT_CONTRACT_ID);
+  const [vaultIdInput, setVaultIdInput] = useState("");
+  const [myAvailableVaults, setMyAvailableVaults] = useState<{ address: string; hasStream: boolean; hasScheduled: boolean }[]>([]);
 
   // Send Payroll Panel states
   const [recipient, setRecipient] = useState("");
@@ -206,6 +209,37 @@ export default function App() {
     }
   }, [stellarWallet.address]);
 
+  // Scan all deployed vaults on-chain for active payroll allocations matching the connected address
+  const scanVaultsForPayroll = useCallback(async () => {
+    if (!stellarWallet.address) return;
+    try {
+      const allVaults = await getAllVaultsFromFactory(stellarWallet.address);
+      const results: { address: string; hasStream: boolean; hasScheduled: boolean }[] = [];
+      const vaultsToCheck = Array.from(new Set([VAULT_CONTRACT_ID, ...allVaults]));
+      
+      await Promise.all(
+        vaultsToCheck.map(async (vAddr) => {
+          try {
+            const stream = await getStreamDetails(vAddr, stellarWallet.address!);
+            const hasStream = Boolean(stream && BigInt(stream.totalAmount) > 0n);
+            const sched = await getScheduledAllocations(vAddr, stellarWallet.address!);
+            const hasScheduled = Boolean(sched && sched.length > 0 && sched.some(s => BigInt(s.amount) > 0n));
+            
+            if (hasStream || hasScheduled) {
+              results.push({ address: vAddr, hasStream, hasScheduled });
+            }
+          } catch {
+            // ignore check failure for an individual vault
+          }
+        })
+      );
+      
+      setMyAvailableVaults(results);
+    } catch (e) {
+      console.error("Failed to scan vaults for payroll", e);
+    }
+  }, [stellarWallet.address]);
+
   // Load native balance
   const loadBalance = useCallback(async () => {
     if (!stellarWallet.address) return;
@@ -267,8 +301,9 @@ export default function App() {
       void checkCustomVault();
       void loadBalance();
       void loadVaultState();
+      void scanVaultsForPayroll();
     }
-  }, [walletReady, checkCustomVault, loadBalance, loadVaultState]);
+  }, [walletReady, checkCustomVault, loadBalance, loadVaultState, scanVaultsForPayroll]);
 
   // Polling updates
   useEffect(() => {
@@ -276,9 +311,10 @@ export default function App() {
     const interval = setInterval(() => {
       void loadBalance();
       void loadVaultState();
+      void scanVaultsForPayroll();
     }, 6000);
     return () => clearInterval(interval);
-  }, [walletReady, loadBalance, loadVaultState]);
+  }, [walletReady, loadBalance, loadVaultState, scanVaultsForPayroll]);
 
   // Live streaming ticker for streaming payroll claims
   useEffect(() => {
@@ -1069,7 +1105,7 @@ export default function App() {
             </div>
             
             {customVaultId ? (
-              <div className="vault-toggle-container">
+              <div className="vault-toggle-container" style={{ marginBottom: 0 }}>
                 <div>
                   <div className="vault-toggle-label">Dynamic Vault Routing</div>
                   <span style={{ fontSize: "0.78rem", color: "var(--ink-muted)" }}>
@@ -1095,6 +1131,75 @@ export default function App() {
                 </button>
               </div>
             )}
+
+            {/* Show any discovered payroll vaults for the connected worker */}
+            {myAvailableVaults.length > 0 && (
+              <div style={{ marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--sage)", marginBottom: "8px" }}>
+                  💰 Available Payroll Found for You:
+                </div>
+                <div style={{ display: "grid", gap: "8px" }}>
+                  {myAvailableVaults.map((v) => (
+                    <div key={v.address} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--cream-dark)", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.82rem" }}>
+                      <div>
+                        <strong>{v.address === VAULT_CONTRACT_ID ? "Shared Default Vault" : `Vault ${shorten(v.address, 6, 6)}`}</strong>
+                        <div style={{ fontSize: "0.72rem", color: "var(--ink-muted)" }}>
+                          Active: {v.hasStream ? "Stream" : ""}{v.hasStream && v.hasScheduled ? " + " : ""}{v.hasScheduled ? "Scheduled Lock" : ""}
+                        </div>
+                      </div>
+                      <button
+                        className="btn-outline"
+                        style={{ padding: "4px 10px", fontSize: "0.75rem", background: vaultId === v.address ? "var(--sage-pale)" : "" }}
+                        onClick={() => {
+                          if (v.address === VAULT_CONTRACT_ID) {
+                            setUseCustomVault(false);
+                          } else {
+                            setCustomVaultId(v.address);
+                            setUseCustomVault(true);
+                          }
+                        }}
+                      >
+                        {vaultId === v.address ? "Active" : "Switch to Claim"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Manual Vault Loading */}
+            <div style={{ display: "grid", gap: "8px", marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+              <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ink-soft)" }}>
+                Load Vault Manually
+              </span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  placeholder="Paste Vault ID (C...)"
+                  className="form-input"
+                  style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-strong)", fontSize: "0.82rem", outline: "none", background: "#fff" }}
+                  value={vaultIdInput}
+                  onChange={(e) => setVaultIdInput(e.target.value)}
+                />
+                <button
+                  className="btn-outline"
+                  style={{ padding: "8px 16px", fontSize: "0.82rem" }}
+                  onClick={() => {
+                    if (vaultIdInput.trim()) {
+                      const trimmed = vaultIdInput.trim();
+                      if (trimmed === VAULT_CONTRACT_ID) {
+                        setUseCustomVault(false);
+                      } else {
+                        setCustomVaultId(trimmed);
+                        setUseCustomVault(true);
+                      }
+                      setVaultIdInput("");
+                    }
+                  }}
+                >
+                  Load
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="stat-cards">

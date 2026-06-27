@@ -640,3 +640,34 @@ export function streamContractEvents(
     running = false;
   };
 }
+
+export async function getAllVaultsFromFactory(
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<string[]> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(FACTORY_CONTRACT_ID);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_all_vaults"))
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val) as string[];
+        if (Array.isArray(native)) {
+          return native.map((addr) => String(addr));
+        }
+      }
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
