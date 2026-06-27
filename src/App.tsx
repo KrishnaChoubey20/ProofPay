@@ -964,6 +964,88 @@ export default function App() {
             </div>
           </div>
         </section>
+
+        {/* Platform Features Section */}
+        <section className="features-section">
+          <div className="container">
+            <h2 className="section-title">Platform Features</h2>
+            <p className="section-subtitle">Advanced payment streaming and secure smart contract capabilities built on Soroban.</p>
+            
+            <div className="features-grid">
+              <div className="feature-card">
+                <div className="feature-icon">🏗️</div>
+                <h3>Dynamic Factory Pattern</h3>
+                <p>Deploy your own dedicated, isolated payroll vault contract on-chain in one click. Fully customizable and secure.</p>
+              </div>
+              <div className="feature-card">
+                <div className="feature-icon">⏱️</div>
+                <h3>Scheduled Time-Locks</h3>
+                <p>Lock funds mathematically until specific release times. Perfect for milestones, bonuses, and vesting schedules.</p>
+              </div>
+              <div className="feature-card">
+                <div className="feature-icon">🌊</div>
+                <h3>Continuous Live Streams</h3>
+                <p>Stream salaries continuously second-by-second. Workers can claim accrued amounts anytime, and see their balances tick up in real time.</p>
+              </div>
+              <div className="feature-card">
+                <div className="feature-icon">🛡️</div>
+                <h3>On-Chain Security</h3>
+                <p>Zero intermediary risk. Funds are stored in non-interactive smart vaults on the Stellar Testnet governed by Soroban SAC.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Process Section */}
+        <section className="process-section">
+          <div className="container">
+            <h2 className="section-title">How It Works</h2>
+            <p className="section-subtitle">Set up and claim automated payroll in four simple steps.</p>
+            
+            <div className="process-steps">
+              <div className="process-step">
+                <div className="step-num">1</div>
+                <h3>Connect Wallet</h3>
+                <p>Connect your Freighter or other Stellar wallet loaded with Testnet XLM to begin.</p>
+              </div>
+              <div className="process-step">
+                <div className="step-num">2</div>
+                <h3>Deploy Vault</h3>
+                <p>Spin up your custom payroll vault using our dynamic Factory contract to hold your payroll assets.</p>
+              </div>
+              <div className="process-step">
+                <div className="step-num">3</div>
+                <h3>Fund/Stream</h3>
+                <p>Deposit funds into instant, scheduled release, or real-time continuous streaming payroll contracts.</p>
+              </div>
+              <div className="process-step">
+                <div className="step-num">4</div>
+                <h3>Claim Instantly</h3>
+                <p>Workers can connect their wallet and claim all unlocked, accrued, or streamed funds at any time.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="landing-footer">
+          <div className="container">
+            <div className="footer-inner">
+              <div className="footer-brand">
+                <h3>💳 ProofPay</h3>
+                <p>Privacy-Preserving Payroll & Dynamic On-Chain Vaults on Stellar.</p>
+              </div>
+              <div className="footer-links">
+                <a href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">GitHub Repository</a>
+                <a href="https://stellar.org" target="_blank" rel="noreferrer">Built on Stellar</a>
+                <a href="https://proofpay-brown.vercel.app/" target="_blank" rel="noreferrer">Live App</a>
+              </div>
+            </div>
+            <div className="footer-bottom">
+              <p>&copy; {new Date().getFullYear()} ProofPay. Powered by Soroban Smart Contracts. All rights reserved.</p>
+            </div>
+          </div>
+        </footer>
       </div>
 
       {/* ══ DASHBOARD ══ */}

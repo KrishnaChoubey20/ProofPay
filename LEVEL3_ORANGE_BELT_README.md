@@ -79,6 +79,9 @@ test tests::test_scheduled_deposit_and_claim ... ok
 test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
 ```
 
+#### Cargo Test Execution Output
+![Cargo Tests](./public/screenshots/cargo%20tests.png)
+
 ### 2. Frontend React Tests (`npm run test`)
 We verified address shortening, inputs validation, XLM-to-Stroops mathematical scaling, and ScVal type conversions:
 
@@ -95,6 +98,9 @@ $ npm run test
    Duration  1.60s (transform 116ms, setup 0ms, collect 824ms, tests 6ms)
 ```
 
+#### Frontend Vitest Execution Output
+![Frontend Tests](./public/screenshots/frrontend%20test.png)
+
 ---
 
 ## 📱 Premium Design & Mobile Responsiveness
@@ -102,3 +108,6 @@ $ npm run test
 * **Modern Gradients**: Glassmorphic headers and borders utilizing modern HSL tailored colors.
 * **Micro-Animations**: Real-time ticking stream counter, smooth fading transition states, pulsing indicators, and interactive hover feedback.
 * **Mobile Responsiveness**: Upgraded `src/styles.css` with adaptive media queries for devices under `960px` and `600px` (hiding desktop-specific headers and auto-wrapping the dashboard panels into a single-column layout for mobile convenience).
+
+#### Responsive Mobile Layout Screenshot
+![Mobile View](./public/screenshots/mobile%20view.png)
