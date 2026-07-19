@@ -145,6 +145,22 @@ export default function App() {
   // Tab control states
   const [activePanel, setActivePanel] = useState<"send" | "vault" | "batch">("vault");
   const [vaultTab, setVaultTab] = useState<"deposit" | "claim">("deposit");
+  const [activeSidebarView, setActiveSidebarView] = useState("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [modalVaultOpen, setModalVaultOpen] = useState(false);
+  const [modalTeamOpen, setModalTeamOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerVault, setDrawerVault] = useState<any>(null);
+
+  // Teammates state
+  const [teamList, setTeamList] = useState([
+    { name: "Amara Nwosu", role: "Backend engineer", rate: "1,200 XLM", vault: "Engineering — Streaming", status: "active" },
+    { name: "Diego Fuentes", role: "Frontend engineer", rate: "1,100 XLM", vault: "Engineering — Streaming", status: "active" },
+    { name: "Lin Wei", role: "Product designer", rate: "950 XLM", vault: "Design — Streaming", status: "active" },
+    { name: "Priya Raman", role: "Product designer", rate: "900 XLM", vault: "Design — Streaming", status: "active" },
+    { name: "Tomás Silva", role: "Smart contract engineer", rate: "1,400 XLM", vault: "Engineering — Streaming", status: "active" },
+    { name: "Kwame Boateng", role: "Contractor — audit", rate: "2,000 USDC", vault: "Contractors — Scheduled", status: "active" },
+  ]);
 
   // Dynamic Vault states
   const [customVaultId, setCustomVaultId] = useState<string | null>(null);
@@ -229,6 +245,39 @@ export default function App() {
 
   const walletReady = Boolean(stellarWallet.connected && stellarWallet.address);
   const activeError = localError || stellarWallet.error;
+
+  // Custom toast notification helper
+  const toast = (msg: string) => {
+    const wrap = document.getElementById("toast-wrap");
+    if (!wrap) return;
+    const el = document.createElement("div");
+    el.className = "toast";
+    el.innerText = msg;
+    wrap.appendChild(el);
+    setTimeout(() => {
+      el.classList.add("fade-out");
+      setTimeout(() => el.remove(), 400);
+    }, 3000);
+  };
+
+  // Add worker to batch registry queue helper
+  const addWorkerToBatch = () => {
+    if (!newBatchWorkerAddress.trim() || !newBatchWorkerAmount.trim()) {
+      alert("Please fill in both worker address and amount.");
+      return;
+    }
+    if (!newBatchWorkerAddress.trim().startsWith("G") || newBatchWorkerAddress.trim().length !== 56) {
+      alert("Invalid worker address format.");
+      return;
+    }
+    setBatchWorkers(prev => [...prev, { 
+      address: newBatchWorkerAddress.trim(), 
+      amount: newBatchWorkerAmount.trim() 
+    }]);
+    setNewBatchWorkerAddress("");
+    setNewBatchWorkerAmount("");
+    toast("Worker added to batch list");
+  };
 
   // Resolve dynamic vault ID based on custom vault toggle
   useEffect(() => {
@@ -1283,1365 +1332,1306 @@ export default function App() {
       </div>
     );
   };
+  const sparklinePoints = "10 150 Q 80 120 150 100 T 290 50 T 370 20";
+
+  // Resolved list of vaults
+  const activeVaultsData = [
+    { id: vaultId, name: useCustomVault ? "My Deployed Vault" : "Default ProofPay Vault", type: "Streaming", asset: vaultTokenSymbol, balance: Number(stroopsToXlm(vaultTotal)), status: "active", rate: 1.2, workers: myAvailableVaults.length || 1 },
+    { id: "VAULT-007", name: "Design payroll", type: "Streaming", asset: "XLM", balance: 9210.0, status: "active", rate: 0.6, workers: 2 },
+    { id: "VAULT-011", name: "Contractors — Q3", type: "Scheduled", asset: "USDC", balance: 6500.0, status: "locked", rate: 0.0, workers: 3 },
+    { id: "VAULT-013", name: "Founders vesting", type: "Scheduled", asset: "XLM", balance: 12000.0, status: "locked", rate: 0.0, workers: 2 },
+    { id: "VAULT-009", name: "Support payroll", type: "Streaming", asset: "USDC", balance: 689.5, status: "paused", rate: 0.35, workers: 1 },
+  ];
 
   return (
     <>
-      <nav>
-        <div className="container nav-inner">
-          <div className="logo" onClick={goHome}>
-            <div className="logo-mark">
-              <svg width="20" height="20" viewBox="0 0 96 96" fill="none">
-                <path d="M18 57C18 43 29 33 42 33H66" stroke="#56D6A7" strokeWidth="9" strokeLinecap="round" />
-                <path d="M67 39C67 53 56 63 43 63H19" stroke="#6CA7FF" strokeWidth="9" strokeLinecap="round" />
-                <circle cx="46" cy="48" r="9" fill="#F7C948" />
-              </svg>
-            </div>
-            <span className="logo-name">ProofPay</span>
-          </div>
-          <div className="nav-right">
-            {walletReady && (
-              <>
-                <div className={`network-badge testnet`} style={{ display: "inline-flex" }}>
-                  <span className="dot"></span>
-                  Stellar Testnet
-                </div>
-                <div className="nav-addr" style={{ display: "inline-flex" }}>
-                  {shorten(stellarWallet.address, 5, 5)}
-                </div>
-                <button id="btn-disconnect" onClick={disconnectWallet}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                    <polyline points="16 17 21 12 16 7" />
-                    <line x1="21" y1="12" x2="9" y2="12" />
+      {/* ══ LANDING PAGE ══ */}
+      {!walletReady && (
+        <div id="view-landing">
+          <nav>
+            <div className="container nav-inner">
+              <div className="logo" onClick={goHome}>
+                <div className="logo-mark">
+                  <svg width="20" height="20" viewBox="0 0 96 96" fill="none">
+                    <path d="M18 57C18 43 29 33 42 33H66" stroke="#56D6A7" strokeWidth="9" strokeLinecap="round" />
+                    <path d="M67 39C67 53 56 63 43 63H19" stroke="#6CA7FF" strokeWidth="9" strokeLinecap="round" />
+                    <circle cx="46" cy="48" r="9" fill="#F7C948" />
                   </svg>
-                  Disconnect
+                </div>
+                <span className="logo-name">ProofPay</span>
+              </div>
+              <div className="nav-right">
+                <button id="btn-connect" onClick={connectWallet} disabled={sending}>
+                  {sending ? <span className="spin">↻</span> : "Connect Wallet"}
                 </button>
-              </>
-            )}
-            {!walletReady && (
-              <button id="btn-connect" onClick={connectWallet} disabled={sending}>
-                {sending ? (
-                  <span className="spin">↻</span>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="2" y="5" width="20" height="14" rx="2" />
-                    <line x1="2" y1="10" x2="22" y2="10" />
-                  </svg>
-                )}
-                {sending ? "Connecting…" : "Connect Wallet"}
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
+              </div>
+            </div>
+          </nav>
 
-      {/* ══ LANDING ══ */}
-      <div id="view-landing" style={{ display: walletReady ? "none" : "block" }}>
-        <section className="hero">
-          <div className="container">
-            <div className="hero-inner">
+          <header className="hero">
+            <div className="container hero-inner">
               <div>
                 <div className="hero-badge">
                   <span className="dot"></span>
-                  <span>Stellar Orange Belt Submission</span>
+                  <span>Stellar Testnet Pilot</span>
                 </div>
                 <h1 className="display">
-                  Dynamic payroll,<br />
-                  <em>streamed in real-time.</em>
+                  Decentralized payroll that <em>streams</em> second by second.
                 </h1>
                 <p className="hero-sub">
-                  ProofPay Orange Belt upgrades to a dynamic Factory pattern. Deploy your own custom payroll vaults, schedule locked funds, and stream real-time continuous payroll on Stellar Testnet.
+                  Secure on-chain vaults, scheduled lockups, and privacy-preserving salary verification built on Stellar & Soroban.
                 </p>
                 <div className="hero-actions">
                   <button className="btn-primary" onClick={connectWallet} disabled={sending}>
-                    {sending ? (
-                      <span className="spin">↻</span>
-                    ) : (
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="2" y="5" width="20" height="14" rx="2" />
-                        <line x1="2" y1="10" x2="22" y2="10" />
-                      </svg>
-                    )}
-                    {sending ? "Connecting…" : "Connect Wallet"}
+                    Launch Dashboard →
                   </button>
-                  <a className="btn-outline" href="https://friendbot.stellar.org" target="_blank" rel="noreferrer">
-                    Fund testnet wallet
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 13v6a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </a>
+                  <a href="#how-it-works" className="btn-outline">How it works</a>
                 </div>
               </div>
               <div className="hero-card">
                 <div className="card-header">
-                  <span className="card-title">Dynamic Factory & Streams</span>
-                  <span className="status-chip connected">
-                    <span className="dot"></span>Ready
-                  </span>
-                </div>
-                <div className="balance-block">
-                  <div className="balance-label">Total Streamed</div>
-                  <div>
-                    <span className="balance-amount">1,520</span>
-                    <span className="balance-unit">XLM</span>
+                  <span className="card-title">Live Vault Status</span>
+                  <div className="status-chip connected">
+                    <span className="dot"></span>
+                    Ready
                   </div>
                 </div>
-                <div className="mock-send-btn">
-                  Launch App Dashboard
+                <div className="balance-block">
+                  <div className="balance-label">Total Value Locked</div>
+                  <div className="balance-amount">
+                    48,920<span className="balance-unit">XLM</span>
+                  </div>
+                </div>
+                <div style={{ marginTop: "14px" }}>
+                  <div className="tx-row">
+                    <div className="tx-info">
+                      <div className="tx-icon">💸</div>
+                      <div>
+                        <div className="tx-label">Salary Stream</div>
+                        <div className="tx-sub">Engineering Vault</div>
+                      </div>
+                    </div>
+                    <div className="tx-amt">+1.20 XLM/m</div>
+                  </div>
+                  <div className="tx-row">
+                    <div className="tx-info">
+                      <div className="tx-icon">🔒</div>
+                      <div>
+                        <div className="tx-label">Contractor Q3</div>
+                        <div className="tx-sub">Time Locked</div>
+                      </div>
+                    </div>
+                    <div className="tx-amt">6,500 USDC</div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </header>
 
-        {/* Platform Features Section */}
-        <section className="features-section">
-          <div className="container">
-            <h2 className="section-title">Platform Features</h2>
-            <p className="section-subtitle">Advanced payment streaming and secure smart contract capabilities built on Soroban.</p>
-            
-            <div className="features-grid">
-              <div className="feature-card">
-                <div className="feature-icon">🏗️</div>
-                <h3>Dynamic Factory Pattern</h3>
-                <p>Deploy your own dedicated, isolated payroll vault contract on-chain in one click. Fully customizable and secure.</p>
-              </div>
-              <div className="feature-card">
-                <div className="feature-icon">⏱️</div>
-                <h3>Scheduled Time-Locks</h3>
-                <p>Lock funds mathematically until specific release times. Perfect for milestones, bonuses, and vesting schedules.</p>
-              </div>
-              <div className="feature-card">
-                <div className="feature-icon">🌊</div>
-                <h3>Continuous Live Streams</h3>
-                <p>Stream salaries continuously second-by-second. Workers can claim accrued amounts anytime, and see their balances tick up in real time.</p>
-              </div>
-              <div className="feature-card">
-                <div className="feature-icon">🛡️</div>
-                <h3>On-Chain Security</h3>
-                <p>Zero intermediary risk. Funds are stored in non-interactive smart vaults on the Stellar Testnet governed by Soroban SAC.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Process Section */}
-        <section className="process-section">
-          <div className="container">
-            <h2 className="section-title">How It Works</h2>
-            <p className="section-subtitle">Set up and claim automated payroll in four simple steps.</p>
-            
-            <div className="process-steps">
-              <div className="process-step">
-                <div className="step-num">1</div>
-                <h3>Connect Wallet</h3>
-                <p>Connect your Freighter or other Stellar wallet loaded with Testnet XLM to begin.</p>
-              </div>
-              <div className="process-step">
-                <div className="step-num">2</div>
-                <h3>Deploy Vault</h3>
-                <p>Spin up your custom payroll vault using our dynamic Factory contract to hold your payroll assets.</p>
-              </div>
-              <div className="process-step">
-                <div className="step-num">3</div>
-                <h3>Fund/Stream</h3>
-                <p>Deposit funds into instant, scheduled release, or real-time continuous streaming payroll contracts.</p>
-              </div>
-              <div className="process-step">
-                <div className="step-num">4</div>
-                <h3>Claim Instantly</h3>
-                <p>Workers can connect their wallet and claim all unlocked, accrued, or streamed funds at any time.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="landing-footer">
-          <div className="container">
-            <div className="footer-inner">
-              <div className="footer-brand">
-                <h3>💳 ProofPay</h3>
-                <p>Privacy-Preserving Payroll & Dynamic On-Chain Vaults on Stellar.</p>
-              </div>
-              <div className="footer-links">
-                <a href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">GitHub Repository</a>
-                <a href="https://stellar.org" target="_blank" rel="noreferrer">Built on Stellar</a>
-                <a href="https://proofpay-brown.vercel.app/" target="_blank" rel="noreferrer">Live App</a>
-              </div>
-            </div>
-            <div className="footer-bottom">
-              <p>&copy; {new Date().getFullYear()} ProofPay. Powered by Soroban Smart Contracts. All rights reserved.</p>
-            </div>
-          </div>
-        </footer>
-      </div>
-
-      {/* ══ DASHBOARD ══ */}
-      <div id="view-dashboard" style={{ display: walletReady ? "block" : "none" }}>
-        <div className="container">
-          
-          <div className="dash-topbar">
-            <div className="dash-greeting">
-              <h2>Payroll Dashboard</h2>
-              <p id="dash-addr-line">Connected with {walletName} on Stellar Testnet</p>
-            </div>
-            <button className="btn-outline" onClick={loadBalance} id="btn-refresh">
-              Refresh balance
-            </button>
-          </div>
-
-          {/* Role selection tab bar */}
-          <div className="role-switcher-tab-bar" style={{ display: "flex", gap: "10px", marginBottom: "18px", background: "var(--cream)", padding: "4px", borderRadius: "12px", border: "1px solid var(--border)" }}>
-            <button 
-              className={`role-btn ${userRole === "employer" ? "active" : ""}`}
-              onClick={() => { setUserRole("employer"); clearErrors(); }}
-              style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "none", background: userRole === "employer" ? "var(--sage)" : "transparent", color: userRole === "employer" ? "#fff" : "var(--ink)", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", transition: "all 0.2s", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-            >
-              💼 Employer Workspace
-            </button>
-            <button 
-              className={`role-btn ${userRole === "worker" ? "active" : ""}`}
-              onClick={() => { setUserRole("worker"); clearErrors(); }}
-              style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "none", background: userRole === "worker" ? "var(--sage)" : "transparent", color: userRole === "worker" ? "#fff" : "var(--ink)", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", transition: "all 0.2s", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-            >
-              👷 Worker Dashboard
-            </button>
-            <button 
-              className={`role-btn ${userRole === "verifier" ? "active" : ""}`}
-              onClick={() => { setUserRole("verifier"); clearErrors(); }}
-              style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "none", background: userRole === "verifier" ? "var(--sage)" : "transparent", color: userRole === "verifier" ? "#fff" : "var(--ink)", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", transition: "all 0.2s", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-            >
-              🔍 Verifier Portal
-            </button>
-          </div>
-
-          {/* Dynamic Factory Deployment Panel */}
-          <div className="panel" style={{ marginBottom: "18px" }}>
-            <div className="panel-head">
-              <h3>Dynamic Vault Factory</h3>
-            </div>
-            
-            {customVaultId ? (
-              <div className="vault-toggle-container" style={{ marginBottom: 0 }}>
-                <div>
-                  <div className="vault-toggle-label">Dynamic Vault Routing</div>
-                  <span style={{ fontSize: "0.78rem", color: "var(--ink-muted)" }}>
-                    Dynamic vault deployed: <code>{shorten(customVaultId, 8, 8)}</code>
-                  </span>
+          <section className="features-section">
+            <div className="container">
+              <h2 className="section-title">Platform Features</h2>
+              <p className="section-subtitle">Advanced payment streaming and secure smart contract capabilities built on Soroban.</p>
+              
+              <div className="features-grid">
+                <div className="feature-card">
+                  <div className="feature-icon">🏗️</div>
+                  <h3>Dynamic Factory Pattern</h3>
+                  <p>Deploy your own dedicated, isolated payroll vault contract on-chain in one click. Fully customizable and secure.</p>
                 </div>
-                <label className="vault-toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={useCustomVault}
-                    onChange={(e) => setUseCustomVault(e.target.checked)}
-                  />
-                  <span className="vault-toggle-slider"></span>
-                </label>
+                <div className="feature-card">
+                  <div className="feature-icon">⏱️</div>
+                  <h3>Scheduled Time-Locks</h3>
+                  <p>Lock funds mathematically until specific release times. Perfect for milestones, bonuses, and vesting schedules.</p>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-icon">🌊</div>
+                  <h3>Continuous Live Streams</h3>
+                  <p>Stream salaries continuously second-by-second. Workers can claim accrued amounts anytime, and see their balances tick up in real time.</p>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-icon">🛡️</div>
+                  <h3>On-Chain Security</h3>
+                  <p>Zero intermediary risk. Funds are stored in non-interactive smart vaults on the Stellar Testnet governed by Soroban SAC.</p>
+                </div>
               </div>
-            ) : (
-              <div style={{ display: "grid", gap: "12px" }}>
-                <div className="notice info" style={{ margin: 0 }}>
-                  Select the underlying currency asset for your custom dynamic vault.
-                </div>
-                
-                <div style={{ display: "grid", gridTemplateColumns: deployedTokenType === "CUSTOM" ? "1fr 1.2fr" : "1fr", gap: "10px", margin: 0 }}>
-                  <label className="form-label" style={{ margin: 0 }}>
-                    Vault Asset Token
-                    <select
-                      className="form-select"
-                      value={deployedTokenType}
-                      onChange={(e) => setDeployedTokenType(e.target.value as "XLM" | "USDC" | "CUSTOM")}
-                    >
-                      <option value="XLM">Native XLM (Stellar Asset Contract)</option>
-                      <option value="USDC">USDC Stablecoin (Testnet SAC)</option>
-                      <option value="CUSTOM">Custom Token (SAC Contract ID)</option>
-                    </select>
-                  </label>
+            </div>
+          </section>
 
-                  {deployedTokenType === "CUSTOM" && (
-                    <label className="form-label" style={{ margin: 0 }}>
-                      Custom Token Contract ID
-                      <input
-                        className="form-input"
-                        placeholder="CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                        value={customTokenSAC}
-                        onChange={(e) => setCustomTokenSAC(e.target.value)}
-                        style={{ height: "38px" }}
-                      />
-                    </label>
-                  )}
+          <section className="process-section" id="how-it-works">
+            <div className="container">
+              <h2 className="section-title">How It Works</h2>
+              <p className="section-subtitle">Set up and claim automated payroll in four simple steps.</p>
+              
+              <div className="process-steps">
+                <div className="process-step">
+                  <div className="step-num">1</div>
+                  <h3>Connect Wallet</h3>
+                  <p>Connect your Freighter or other Stellar wallet loaded with Testnet XLM to begin.</p>
                 </div>
+                <div className="process-step">
+                  <div className="step-num">2</div>
+                  <h3>Deploy Vault</h3>
+                  <p>Spin up your custom payroll vault using our dynamic Factory contract to hold your payroll assets.</p>
+                </div>
+                <div className="process-step">
+                  <div className="step-num">3</div>
+                  <h3>Fund/Stream</h3>
+                  <p>Deposit funds into instant, scheduled release, or real-time continuous streaming payroll contracts.</p>
+                </div>
+                <div className="process-step">
+                  <div className="step-num">4</div>
+                  <h3>Claim Instantly</h3>
+                  <p>Workers can connect their wallet and claim all unlocked, accrued, or streamed funds at any time.</p>
+                </div>
+              </div>
+            </div>
+          </section>
 
-                <button className="btn-primary" onClick={deployDynamicVault} disabled={sending} style={{ marginTop: "6px" }}>
-                  {sending ? "Deploying Vault…" : `Deploy Custom ${deployedTokenType} Vault`}
+          <footer className="landing-footer">
+            <div className="container">
+              <div className="footer-inner">
+                <div className="footer-brand">
+                  <h3>💳 ProofPay</h3>
+                  <p>Privacy-Preserving Payroll & Dynamic On-Chain Vaults on Stellar.</p>
+                </div>
+                <div className="footer-links">
+                  <a href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">GitHub Repository</a>
+                  <a href="https://stellar.org" target="_blank" rel="noreferrer">Built on Stellar</a>
+                  <a href="https://proofpay-brown.vercel.app/" target="_blank" rel="noreferrer">Live App</a>
+                </div>
+              </div>
+              <div className="footer-bottom">
+                <p>&copy; {new Date().getFullYear()} ProofPay. Powered by Soroban Smart Contracts. All rights reserved.</p>
+              </div>
+            </div>
+          </footer>
+        </div>
+      )}
+
+      {/* ══ DASHBOARD PAGE ══ */}
+      {walletReady && (
+        <div className="dashboard-container">
+          <aside className={`sidebar ${sidebarOpen ? "open" : ""}`} id="sidebar">
+            <div className="side-brand">
+              <svg className="logo-mark" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="#F3EEE2" />
+                <path d="M9 21V11h6.2c2.4 0 4 1.5 4 3.7 0 2.2-1.6 3.7-4 3.7H12v2.6H9zm3-5.1h2.9c1 0 1.7-.6 1.7-1.6s-.7-1.6-1.7-1.6H12v3.2z" fill="#14110D" />
+              </svg>
+              <span>ProofPay</span>
+            </div>
+
+            {/* Dynamic context navigation links based on userRole */}
+            <nav className="side-nav">
+              <div style={{ padding: "0 4px 12px", borderBottom: "1px solid rgba(243,238,226,.1)" }}>
+                <label style={{ fontSize: "0.65rem", color: "rgba(243, 238, 226, 0.4)", textTransform: "uppercase", fontWeight: "bold", display: "block", marginBottom: "4px" }}>Workspace Role</label>
+                <select 
+                  value={userRole} 
+                  onChange={(e) => { 
+                    const role = e.target.value as "employer" | "worker" | "verifier";
+                    setUserRole(role); 
+                    clearErrors();
+                    if (role === "employer") setActiveSidebarView("overview");
+                    else if (role === "worker") setActiveSidebarView("claims");
+                    else if (role === "verifier") setActiveSidebarView("portal");
+                  }}
+                  style={{ width: "100%", background: "rgba(243,238,226,.06)", border: "1px solid rgba(243,238,226,.14)", color: "#fff", padding: "6px 8px", borderRadius: "8px", fontSize: "0.78rem", outline: "none", cursor: "pointer" }}
+                >
+                  <option value="employer" style={{ color: "#000" }}>💼 Employer Workspace</option>
+                  <option value="worker" style={{ color: "#000" }}>👷 Worker Dashboard</option>
+                  <option value="verifier" style={{ color: "#000" }}>🔍 Verifier Portal</option>
+                </select>
+              </div>
+
+              <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                {userRole === "employer" && (
+                  <>
+                    <button className={`side-link ${activeSidebarView === "overview" ? "active" : ""}`} onClick={() => setActiveSidebarView("overview")}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/></svg>
+                      Overview
+                    </button>
+                    <button className={`side-link ${activeSidebarView === "vaults" ? "active" : ""}`} onClick={() => setActiveSidebarView("vaults")}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                      Vault Registry
+                    </button>
+                    <button className={`side-link ${activeSidebarView === "team" ? "active" : ""}`} onClick={() => setActiveSidebarView("team")}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="9" cy="8" r="3"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/><circle cx="17" cy="7" r="2.4"/><path d="M22 21c0-2.9-1.8-5.3-4.4-6.3"/></svg>
+                      Teammates
+                    </button>
+                    <button className={`side-link ${activeSidebarView === "batch" ? "active" : ""}`} onClick={() => setActiveSidebarView("batch")}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="9" x2="15" y2="9" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="13" y2="17" /></svg>
+                      Batch Builder
+                    </button>
+                  </>
+                )}
+
+                {userRole === "worker" && (
+                  <>
+                    <button className={`side-link ${activeSidebarView === "claims" ? "active" : ""}`} onClick={() => setActiveSidebarView("claims")}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                      Claim Center
+                    </button>
+                    <button className={`side-link ${activeSidebarView === "proofs" ? "active" : ""}`} onClick={() => setActiveSidebarView("proofs")}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3l7 3v6c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+                      Income Proofs
+                    </button>
+                  </>
+                )}
+
+                {userRole === "verifier" && (
+                  <button className={`side-link ${activeSidebarView === "portal" ? "active" : ""}`} onClick={() => setActiveSidebarView("portal")}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                    Verifier Portal
+                  </button>
+                )}
+
+                <button className={`side-link ${activeSidebarView === "settings" ? "active" : ""}`} onClick={() => setActiveSidebarView("settings")}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.6-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.9.3H9A1.7 1.7 0 0010 3.6V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.9V9c.2.7.8 1.2 1.6 1.2H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+                  Settings
                 </button>
               </div>
-            )}
+            </nav>
 
-            {/* Show any discovered payroll vaults for the connected worker */}
-            {myAvailableVaults.length > 0 && (
-              <div style={{ marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-                <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--sage)", marginBottom: "8px" }}>
-                  💰 Available Payroll Found for You:
+            <div className="side-foot">
+              <a href="#" onClick={(e) => { e.preventDefault(); disconnectWallet(); }} style={{ display: "block", fontSize: "0.76rem", color: "rgba(243,238,226,.5)", marginBottom: "12px" }}>
+                ← Leave Dashboard
+              </a>
+              <div className="wallet-pill">
+                <span className="wallet-dot"></span>
+                <div className="wallet-meta">
+                  <span className="wallet-addr">{shorten(stellarWallet.address, 4, 4)}</span>
+                  <span className="wallet-net">Stellar · Testnet</span>
                 </div>
-                <div style={{ display: "grid", gap: "8px" }}>
-                  {myAvailableVaults.map((v) => (
-                    <div key={v.address} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--cream-dark)", padding: "8px 10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.82rem" }}>
-                      <div>
-                        <strong>{v.address === VAULT_CONTRACT_ID ? "Shared Default Vault" : `Vault ${shorten(v.address, 6, 6)}`}</strong>
-                        <div style={{ fontSize: "0.72rem", color: "var(--ink-muted)" }}>
-                          Active: {v.hasStream ? "Stream" : ""}{v.hasStream && v.hasScheduled ? " + " : ""}{v.hasScheduled ? "Scheduled Lock" : ""}
+              </div>
+            </div>
+          </aside>
+
+          <div className="main-workspace">
+            <div className="topbar">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <button className="btn-ghost btn btn-sm" onClick={() => setSidebarOpen(!sidebarOpen)} style={{ display: "inline-flex" }}>☰</button>
+                <div>
+                  <h1 style={{ textTransform: "capitalize" }}>
+                    {activeSidebarView === "batch" ? "Batch Payroll Builder" : activeSidebarView}
+                  </h1>
+                  <div className="sub">
+                    Stellar Testnet · {useCustomVault ? "Custom routing: ON" : "Default system routing"}
+                  </div>
+                </div>
+              </div>
+              <div className="top-actions">
+                <div className="search">
+                  <span>⌕</span>
+                  <input type="text" placeholder="Search vaults, claims, tx..." />
+                </div>
+                {userRole === "employer" && (
+                  <button className="btn btn-primary btn-sm" onClick={() => setModalVaultOpen(true)}>
+                    + Deploy Vault
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="page">
+
+              {/* 📊 OVERVIEW VIEW */}
+              {userRole === "employer" && activeSidebarView === "overview" && (
+                <div className="view active">
+                  <div className="stat-grid">
+                    <div className="stat-card">
+                      <div className="label">Total Value Locked</div>
+                      <div className="value mono">{stroopsToXlm(vaultTotal)} {vaultTokenSymbol}</div>
+                      <div className="delta">▲ Connected on-chain</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="label">Active Streams</div>
+                      <div className="value mono">{streamDetails ? "1" : "0"}</div>
+                      <div className="delta">{streamDetails ? "Ongoing payout stream" : "No streams created"}</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="label">Teammates Deployed</div>
+                      <div className="value mono">{teamList.length}</div>
+                      <div className="delta">{teamList.filter(t => t.status === "active").length} active members</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="label">System Routing</div>
+                      <div className="value mono" style={{ fontSize: "1.1rem", fontFamily: "monospace", textTransform: "uppercase" }}>
+                        {useCustomVault ? "Custom" : "Default"}
+                      </div>
+                      <div className="delta">{shorten(vaultId, 5, 5)}</div>
+                    </div>
+                  </div>
+
+                  <div className="two-col">
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>Vault Live Streams</h3>
+                        <span className="hint">Ticking every second</span>
+                      </div>
+                      <div className="stream-row">
+                        <div className="stream-icon">⚓</div>
+                        <div className="stream-info">
+                          <div className="name">{useCustomVault ? "Employer Custom Vault" : "Default System Vault"}</div>
+                          <div className="sub">
+                            {streamDetails ? `Ticking stream: ${stroopsToXlm(streamDetails.totalAmount)} tokens` : "No continuous stream registered"}
+                          </div>
+                          {streamDetails && (
+                            <div className="stream-bar">
+                              <div style={{ width: `${streamProgress}%` }}></div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="stream-amt">
+                          <span className="n">
+                            {streamDetails ? stroopsToXlm(liveStreamClaimable) : "0.00"}
+                          </span>
+                          <span className="u">{vaultTokenSymbol} accrued</span>
                         </div>
                       </div>
-                      <button
-                        className="btn-outline"
-                        style={{ padding: "4px 10px", fontSize: "0.75rem", background: vaultId === v.address ? "var(--sage-pale)" : "" }}
+                    </div>
+
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>TVL Trend (Historical Log)</h3>
+                        <span className="hint">{stroopsToXlm(vaultTotal)} {vaultTokenSymbol}</span>
+                      </div>
+                      <svg viewBox="0 0 380 170" style={{ width: "100%", height: "170px" }}>
+                        <defs>
+                          <linearGradient id="tvl-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#1F4D3D" stopOpacity="0.22" />
+                            <stop offset="100%" stopColor="#1F4D3D" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M 10 150 Q 80 120 150 100 T 290 50 T 370 20 L 370 160 L 10 160 Z" fill="url(#tvl-grad)" />
+                        <path d="M 10 150 Q 80 120 150 100 T 290 50 T 370 20" fill="none" stroke="#1F4D3D" strokeWidth="2" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="panel" style={{ marginTop: "24px" }}>
+                    <div className="panel-head">
+                      <h3>Recent Vault Activity Logs</h3>
+                      <span className="hint">Soroban on-chain event stream active</span>
+                    </div>
+                    {activityFeed.length === 0 ? (
+                      <div style={{ padding: "20px", fontStyle: "italic", color: "var(--ink-mute)", textAlign: "center" }}>
+                        Waiting for events... Make a deposit or claim on-chain to trigger logs.
+                      </div>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Action</th>
+                            <th>Target Address</th>
+                            <th>Amount</th>
+                            <th>Tx Hash</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activityFeed.slice(0, 10).map((evt, idx) => (
+                            <tr key={idx}>
+                              <td>
+                                <span className={`dot ${evt.type.toLowerCase().includes("deposit") ? "deposit" : evt.type.toLowerCase().includes("claim") ? "claim" : "stream"}`}></span>
+                                {evt.type.toUpperCase()}
+                              </td>
+                              <td className="mono">{shorten(evt.worker, 8, 8)}</td>
+                              <td className="mono">{stroopsToXlm(evt.amount)} {vaultTokenSymbol}</td>
+                              <td className="mono">
+                                <a href={`${STELLAR_EXPERT_TESTNET}/${evt.txHash}`} target="_blank" rel="noreferrer" style={{ color: "var(--vault)" }}>
+                                  {shorten(evt.txHash, 6, 6)} ↗
+                                </a>
+                              </td>
+                              <td><span className="pill active">Confirmed</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 📂 VAULTS VIEW */}
+              {userRole === "employer" && activeSidebarView === "vaults" && (
+                <div className="view active">
+                  <div className="panel">
+                    <div className="panel-head">
+                      <h3>Dynamic Custom Vault routing</h3>
+                    </div>
+                    
+                    {customVaultId ? (
+                      <div className="vault-toggle-container" style={{ margin: 0 }}>
+                        <div>
+                          <div className="vault-toggle-label" style={{ fontSize: "1.02rem" }}>Vault Routing Mode</div>
+                          <span style={{ fontSize: "0.8rem", color: "var(--ink-muted)" }}>
+                            Routing all payments through your custom deployed vault: <code>{customVaultId}</code>
+                          </span>
+                        </div>
+                        <label className="vault-toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={useCustomVault}
+                            onChange={(e) => setUseCustomVault(e.target.checked)}
+                          />
+                          <span className="vault-toggle-slider"></span>
+                        </label>
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: "12px" }}>
+                        <div className="notice info" style={{ margin: 0 }}>
+                          No custom vault deployed yet. Use the deployment manager modal to spin one up on Stellar Testnet instantly.
+                        </div>
+                        <button className="btn btn-primary" onClick={() => setModalVaultOpen(true)} style={{ justifySelf: "start" }}>
+                          + Deploy Custom Vault
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="panel" style={{ marginTop: "24px" }}>
+                    <div className="panel-head">
+                      <h3>Manually Load Deployed Vault</h3>
+                    </div>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input 
+                        type="text" 
+                        placeholder="Enter 56-character Soroban Vault Contract Address (C...)" 
+                        value={vaultIdInput}
+                        onChange={(e) => setVaultIdInput(e.target.value)}
+                        style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid var(--paper-line-strong)", background: "var(--paper)" }}
+                      />
+                      <button 
+                        className="btn btn-ghost"
                         onClick={() => {
-                          if (v.address === VAULT_CONTRACT_ID) {
-                            setUseCustomVault(false);
-                          } else {
-                            setCustomVaultId(v.address);
+                          if (vaultIdInput.trim().startsWith("C") && vaultIdInput.trim().length === 56) {
+                            setCustomVaultId(vaultIdInput.trim());
                             setUseCustomVault(true);
+                            setVaultIdInput("");
+                            toast("Dynamic Vault Loaded Successfully!");
+                          } else {
+                            alert("Invalid contract address format.");
                           }
                         }}
                       >
-                        {vaultId === v.address ? "Active" : "Switch to Claim"}
+                        Load Contract
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Manual Vault Loading */}
-            <div style={{ display: "grid", gap: "8px", marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-              <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ink-soft)" }}>
-                Load Vault Manually
-              </span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <input
-                  placeholder="Paste Vault ID (C...)"
-                  className="form-input"
-                  style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border-strong)", fontSize: "0.82rem", outline: "none", background: "#fff" }}
-                  value={vaultIdInput}
-                  onChange={(e) => setVaultIdInput(e.target.value)}
-                />
-                <button
-                  className="btn-outline"
-                  style={{ padding: "8px 16px", fontSize: "0.82rem" }}
-                  onClick={() => {
-                    if (vaultIdInput.trim()) {
-                      const trimmed = vaultIdInput.trim();
-                      if (trimmed === VAULT_CONTRACT_ID) {
-                        setUseCustomVault(false);
-                      } else {
-                        setCustomVaultId(trimmed);
-                        setUseCustomVault(true);
-                      }
-                      setVaultIdInput("");
-                    }
-                  }}
-                >
-                  Load
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-cards">
-            <div className="stat-card">
-              <div className="sc-label">XLM BALANCE</div>
-              <div>
-                <span className="sc-value" id="sc-balance">{formattedBalance}</span>
-                {balance && <span className="sc-unit">XLM</span>}
-              </div>
-              <div className="sc-sub" id="sc-balance-sub">{balanceMessage}</div>
-            </div>
-            <div className="stat-card">
-              <div className="sc-label">ACTIVE VAULT</div>
-              <div className="sc-value" id="sc-network" style={{ fontSize: "1.2rem", color: "var(--sage)", wordBreak: "break-all" }}>
-                {shorten(vaultId, 8, 8)}
-              </div>
-              <div className="sc-sub" id="sc-network-sub">
-                {useCustomVault ? "Custom Dynamic Vault" : "Default Shared Vault"}
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="sc-label">TOTAL VAULT BALANCE</div>
-              <div>
-                <span className="sc-value">{stroopsToXlm(vaultTotal)}</span>
-                <span className="sc-unit">{vaultTokenSymbol}</span>
-              </div>
-              <div className="sc-sub">Assets in active vault pool</div>
-            </div>
-          </div>
-
-          <div className="dash-grid">
-            <div style={{ display: "grid", gap: "18px" }}>
-              
-              {userRole === "employer" && (
-                <>
-                  <div className="tab-bar">
-                    <button 
-                      className={`tab-btn ${activePanel === "vault" ? "active" : ""}`}
-                      onClick={() => { setActivePanel("vault"); clearErrors(); }}
-                    >
-                      Smart Vault Deposits
-                    </button>
-                    <button 
-                      className={`tab-btn ${activePanel === "batch" ? "active" : ""}`}
-                      onClick={() => { setActivePanel("batch"); clearErrors(); }}
-                    >
-                      Multi-Worker Batch Payroll
-                    </button>
-                    <button 
-                      className={`tab-btn ${activePanel === "send" ? "active" : ""}`}
-                      onClick={() => { setActivePanel("send"); clearErrors(); }}
-                    >
-                      Direct Payout
-                    </button>
                   </div>
 
-                  {/* Panel 1: Smart Vault escrow deposit */}
-                  {activePanel === "vault" && (
-                    <div className="panel">
-                      <div className="panel-head"><h3>Smart Payroll Vault Operations</h3></div>
-
-                      <div className="contract-badge" style={{ marginBottom: "16px" }}>
-                        <div style={{ flex: 1, minWidth: 0, marginRight: "10px" }}>
-                          <span style={{ fontSize: "0.74rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>ACTIVE VAULT CONTRACT ID</span>
-                          <code>{vaultId}</code>
+                  <div style={{ marginTop: "28px" }}>
+                    <h3 style={{ fontFamily: "Fraunces, serif", fontSize: "1.15rem", marginBottom: "16px" }}>Active Vault Registries</h3>
+                    <div className="vault-grid">
+                      {activeVaultsData.map((v, idx) => (
+                        <div className="vcard" key={idx} onClick={() => { setDrawerVault(v); setDrawerOpen(true); }}>
+                          <div className="vcard-top">
+                            <span className="vcard-type">{v.type}</span>
+                            <span className={`pill ${v.status}`}>{v.status}</span>
+                          </div>
+                          <h4>{v.name}</h4>
+                          <div className="id mono">{shorten(v.id, 8, 8)}</div>
+                          <div className="bal">
+                            {v.balance.toLocaleString()}
+                            <small>{v.asset}</small>
+                          </div>
+                          <div className="vcard-foot">
+                            <span style={{ fontSize: "0.76rem", color: "var(--ink-muted)" }}>{v.workers} worker(s) allocated</span>
+                            <span style={{ fontSize: "0.76rem", color: "var(--vault-deep)", fontWeight: 600 }}>Open →</span>
+                          </div>
                         </div>
-                        <button className="copy-btn" onClick={() => navigator.clipboard.writeText(vaultId)}>Copy</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 👥 TEAM VIEW */}
+              {userRole === "employer" && activeSidebarView === "team" && (
+                <div className="view active">
+                  <div className="panel">
+                    <div className="panel-head">
+                      <h3>Teammates Payroll Registry</h3>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setModalTeamOpen(true)}>
+                        + Add Teammate
+                      </button>
+                    </div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Role</th>
+                          <th>Allocation Rate</th>
+                          <th>Asset Code</th>
+                          <th>Target Vault</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamList.map((t, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{t.name}</strong></td>
+                            <td>{t.role}</td>
+                            <td className="mono">{t.rate}</td>
+                            <td className="mono">{t.rate.split(" ")[1] || "XLM"}</td>
+                            <td>{t.vault}</td>
+                            <td><span className="pill active">{t.status}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* 💸 BATCH BUILDER VIEW */}
+              {userRole === "employer" && activeSidebarView === "batch" && (
+                <div className="view active">
+                  <div className="two-col">
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>Construct Multi-Worker Payout Batch</h3>
                       </div>
-
-                      {renderErrorToast()}
-
-                      <form className="send-form" onSubmit={depositToVault}>
-                        <label className="form-label">
-                          Deposit Flow Type
-                          <select 
-                            className="form-select"
-                            value={depositType}
-                            onChange={(e) => setDepositType(e.target.value as "instant" | "scheduled" | "streaming")}
-                          >
-                            <option value="instant">Instant allocation</option>
-                            <option value="scheduled">Scheduled release (Time-locked)</option>
-                            <option value="streaming">Streaming payroll (Continuous)</option>
-                          </select>
-                        </label>
-
-                        <label className="form-label">
-                          Worker Address (G…)
-                          <input
-                            placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                            autoComplete="off"
-                            spellCheck="false"
-                            value={vaultWorker}
-                            onChange={(e) => setVaultWorker(e.target.value)}
-                          />
-                        </label>
-
-                        <label className="form-label">
-                          Amount ({vaultTokenSymbol})
-                          <input
-                            type="number"
-                            min="0.0000001"
-                            step="any"
-                            placeholder="1"
-                            value={vaultAmount}
-                            onChange={(e) => setVaultAmount(e.target.value)}
-                          />
-                        </label>
-
-                        {depositType === "scheduled" && (
-                          <label className="form-label">
-                            Release Date & Time
-                            <input
-                              type="datetime-local"
-                              value={releaseTime}
-                              onChange={(e) => setReleaseTime(e.target.value)}
-                            />
-                          </label>
-                        )}
-
-                        {depositType === "streaming" && (
-                          <div className="form-row-2">
-                            <label className="form-label">
-                              Stream Start Time
-                              <input
-                                type="datetime-local"
-                                value={streamStart}
-                                onChange={(e) => setStreamStart(e.target.value)}
-                              />
-                            </label>
-                            <label className="form-label">
-                              Stream End Time
-                              <input
-                                type="datetime-local"
-                                value={streamEnd}
-                                onChange={(e) => setStreamEnd(e.target.value)}
-                              />
-                            </label>
-                          </div>
-                        )}
-
-                        <button id="btn-send" type="submit" disabled={sending}>
-                          {sending ? " Depositing…" : ` Deposit (${depositType})`}
-                        </button>
-                      </form>
-
-                      {vaultTxStatus.type !== "idle" && (
-                        <div className={`tx-status-box ${vaultTxStatus.type}`} style={{ display: "block", marginTop: "14px" }}>
-                          <div className="tsb-title">
-                            {vaultTxStatus.type === "pending" && <span className="spin">↻</span>}
-                            {vaultTxStatus.type === "success" && "✓"}
-                            {vaultTxStatus.type === "error" && "⚠"}
-                            {" " + vaultTxStatus.title}
-                          </div>
+                      
+                      {vaultTxStatus.type === "pending" && (
+                        <div className="tx-status-box pending" style={{ marginBottom: "14px" }}>
+                          <div className="tsb-title">⏳ Simulating Batch Submission</div>
                           <p>{vaultTxStatus.message}</p>
-                          {vaultTxStatus.type === "success" && (
-                            <div className="receipt-row">
-                              <code>{shorten(vaultTxStatus.hash, 8, 8)}</code>
-                              <button className="copy-btn" onClick={() => copyHash(vaultTxStatus.hash, true)} type="button">
-                                {copiedVaultHash === vaultTxStatus.hash ? "Copied!" : "Copy hash"}
-                              </button>
-                              <a href={`${STELLAR_EXPERT_TESTNET}/${vaultTxStatus.hash}`} target="_blank" rel="noreferrer">
-                                View on StellarExpert ↗
-                              </a>
-                            </div>
-                          )}
                         </div>
                       )}
-                    </div>
-                  )}
-
-                  {/* Panel 2: Multi-worker Batch Payroll form */}
-                  {activePanel === "batch" && (
-                    <div className="panel">
-                      <div className="panel-head"><h3>Multi-Worker Batch Payroll Builder</h3></div>
-                      
-                      <div className="contract-badge" style={{ marginBottom: "16px" }}>
-                        <div style={{ flex: 1, minWidth: 0, marginRight: "10px" }}>
-                          <span style={{ fontSize: "0.74rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>ACTIVE VAULT CONTRACT ID</span>
-                          <code>{vaultId}</code>
+                      {vaultTxStatus.type === "success" && (
+                        <div className="tx-status-box success" style={{ marginBottom: "14px" }}>
+                          <div className="tsb-title">✓ Batch Confirmed!</div>
+                          <p>{vaultTxStatus.message}</p>
                         </div>
-                        <button className="copy-btn" onClick={() => navigator.clipboard.writeText(vaultId)}>Copy</button>
+                      )}
+                      {vaultTxStatus.type === "error" && (
+                        <div className="tx-status-box error" style={{ marginBottom: "14px" }}>
+                          <div className="tsb-title">✕ Batch Creation Failed</div>
+                          <p>{vaultTxStatus.message}</p>
+                        </div>
+                      )}
+
+                      <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                        Payroll batches lock funds for multiple workers in a single transaction on-chain.
                       </div>
 
-                      {renderErrorToast()}
-
-                      <div style={{ marginBottom: "16px", padding: "12px", background: "var(--cream)", borderRadius: "8px", border: "1px solid var(--border)" }}>
-                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.82rem", color: "var(--sage)" }}>Add Worker Payouts</h4>
-                        <div style={{ display: "grid", gap: "8px", marginBottom: "8px" }}>
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Worker Wallet Address (G...)</label>
                           <input 
-                            className="form-input"
-                            placeholder="Worker Stellar Address (G...)"
+                            type="text" 
+                            placeholder="G..." 
                             value={newBatchWorkerAddress}
                             onChange={(e) => setNewBatchWorkerAddress(e.target.value)}
-                            style={{ fontSize: "0.8rem", padding: "8px" }}
-                          />
-                          <input 
-                            className="form-input"
-                            type="number"
-                            placeholder={`Payout Amount (${vaultTokenSymbol})`}
-                            value={newBatchWorkerAmount}
-                            onChange={(e) => setNewBatchWorkerAmount(e.target.value)}
-                            style={{ fontSize: "0.8rem", padding: "8px" }}
                           />
                         </div>
-                        <button 
-                          type="button"
-                          className="btn-outline"
-                          onClick={() => {
-                            if (!newBatchWorkerAddress.trim() || !newBatchWorkerAmount.trim()) return;
-                            if (!newBatchWorkerAddress.trim().startsWith("G") || newBatchWorkerAddress.trim().length !== 56) {
-                              setLocalError(new WalletError("Unknown", "Enter a valid public key G address."));
-                              return;
-                            }
-                            const val = parseFloat(newBatchWorkerAmount);
-                            if (isNaN(val) || val <= 0) {
-                              setLocalError(new WalletError("Unknown", "Enter a valid payout amount."));
-                              return;
-                            }
-                            setBatchWorkers([...batchWorkers, { address: newBatchWorkerAddress.trim(), amount: newBatchWorkerAmount.trim() }]);
-                            setNewBatchWorkerAddress("");
-                            setNewBatchWorkerAmount("");
-                            clearErrors();
-                          }}
-                          style={{ width: "100%", padding: "6px", fontSize: "0.78rem" }}
-                        >
-                          + Add Worker to Payout Batch
-                        </button>
+                        <div className="field">
+                          <label>Payout Amount ({vaultTokenSymbol})</label>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <input 
+                              type="number" 
+                              placeholder="100.0" 
+                              value={newBatchWorkerAmount}
+                              onChange={(e) => setNewBatchWorkerAmount(e.target.value)}
+                            />
+                            <button className="btn btn-ghost" type="button" onClick={addWorkerToBatch}>
+                              Add
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
-                      {batchWorkers.length > 0 && (
-                        <div style={{ marginBottom: "16px" }}>
-                          <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: "6px" }}>Batch Payout List:</div>
-                          <div style={{ display: "grid", gap: "6px", maxHeight: "150px", overflowY: "auto" }}>
-                            {batchWorkers.map((w, idx) => (
-                              <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--cream-dark)", padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "0.78rem" }}>
-                                <span><code>{shorten(w.address, 6, 6)}</code> : <strong>{w.amount} {vaultTokenSymbol}</strong></span>
-                                <button 
-                                  className="copy-btn" 
-                                  onClick={() => setBatchWorkers(batchWorkers.filter((_, i) => i !== idx))}
-                                  style={{ background: "#f2dede", color: "#a94442", border: "none", padding: "2px 6px" }}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div style={{ fontSize: "0.8rem", fontWeight: 700, marginTop: "8px", textAlign: "right" }}>
-                            Total Batch Size: {batchWorkers.reduce((acc, c) => acc + parseFloat(c.amount), 0)} {vaultTokenSymbol}
-                          </div>
-                        </div>
-                      )}
-
-                      <label className="form-label">
-                        Milestone Release Lock Timestamp
-                        <input
-                          type="datetime-local"
+                      <div className="field">
+                        <label>Unlock / Release Time</label>
+                        <input 
+                          type="datetime-local" 
                           value={batchReleaseTime}
                           onChange={(e) => setBatchReleaseTime(e.target.value)}
                         />
-                      </label>
+                      </div>
 
-                      <button id="btn-send" onClick={createPayrollBatch} disabled={sending || batchWorkers.length === 0}>
-                        {sending ? "Creating Batch..." : "Lock & Deploy Payroll Batch"}
+                      <button className="btn btn-primary" onClick={createPayrollBatch} disabled={sending} style={{ width: "100%", marginTop: "10px" }}>
+                        Deploy Batch Payouts On-Chain
                       </button>
-
-                      {vaultTxStatus.type !== "idle" && (
-                        <div className={`tx-status-box ${vaultTxStatus.type}`} style={{ display: "block", marginTop: "14px" }}>
-                          <div className="tsb-title">
-                            {vaultTxStatus.type === "pending" && <span className="spin">↻</span>}
-                            {vaultTxStatus.type === "success" && "✓"}
-                            {vaultTxStatus.type === "error" && "⚠"}
-                            {" " + vaultTxStatus.title}
-                          </div>
-                          <p>{vaultTxStatus.message}</p>
-                          {vaultTxStatus.type === "success" && (
-                            <div className="receipt-row">
-                              <code>{shorten(vaultTxStatus.hash, 8, 8)}</code>
-                              <button className="copy-btn" onClick={() => copyHash(vaultTxStatus.hash, true)} type="button">
-                                {copiedVaultHash === vaultTxStatus.hash ? "Copied!" : "Copy hash"}
-                              </button>
-                              <a href={`${STELLAR_EXPERT_TESTNET}/${vaultTxStatus.hash}`} target="_blank" rel="noreferrer">
-                                View on StellarExpert ↗
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {createdBatches.length > 0 && (
-                        <div style={{ marginTop: "18px", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-                          <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--sage)", marginBottom: "8px" }}>📁 Vault Payroll Batches Log:</div>
-                          <div style={{ display: "grid", gap: "8px" }}>
-                            {createdBatches.map((b) => (
-                              <div key={b.id.toString()} style={{ background: "var(--cream)", border: "1px solid var(--border)", padding: "10px", borderRadius: "8px", fontSize: "0.78rem" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
-                                  <span>Batch ID: #{b.id.toString()}</span>
-                                  <span>{stroopsToXlm(b.totalAmount)} {vaultTokenSymbol}</span>
-                                </div>
-                                <div style={{ color: "var(--ink-muted)", fontSize: "0.72rem", marginTop: "4px" }}>
-                                  Workers: {b.workerCount} · Claimed: {b.claimedCount}/{b.workerCount}
-                                </div>
-                                <div style={{ color: "var(--ink-muted)", fontSize: "0.72rem" }}>
-                                  Release Lock: {new Date(Number(b.releaseTime) * 1000).toLocaleString()}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  )}
 
-                  {/* Panel 3: Classic Send Direct Payroll */}
-                  {activePanel === "send" && (
                     <div className="panel">
-                      <div className="panel-head"><h3>Send Direct Payout (SWIFT Alternative)</h3></div>
-
-                      {renderErrorToast()}
-
-                      <form className="send-form" onSubmit={sendPayroll}>
-                        <label className="form-label">
-                          Recipient Address (G…)
-                          <input
-                            id="inp-recipient"
-                            placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                            autoComplete="off"
-                            spellCheck="false"
-                            value={recipient}
-                            onChange={(e) => setRecipient(e.target.value)}
-                          />
-                        </label>
-                        <div className="form-row-2">
-                          <label className="form-label">
-                            Amount (XLM)
-                            <input
-                              id="inp-amount"
-                              type="number"
-                              min="0.0000001"
-                              step="any"
-                              placeholder="1"
-                              value={amount}
-                              onChange={(e) => setAmount(e.target.value)}
-                            />
-                          </label>
-                          <label className="form-label">
-                            Memo (optional)
-                            <input
-                              id="inp-memo"
-                              placeholder="ProofPay payroll test"
-                              maxLength={28}
-                              value={memo}
-                              onChange={(e) => setMemo(e.target.value)}
-                            />
-                          </label>
+                      <div className="panel-head">
+                        <h3>Allocated Workers inside Current Batch</h3>
+                        <span className="hint">{batchWorkers.length} worker(s) queued</span>
+                      </div>
+                      
+                      {batchWorkers.length === 0 ? (
+                        <div style={{ padding: "20px", textAlign: "center", color: "var(--ink-mute)", fontStyle: "italic" }}>
+                          No workers added to the current batch list. Fill the form to append.
                         </div>
-                        <button id="btn-send" type="submit" disabled={sending}>
-                          {sending ? " Processing…" : " Send Direct Payout"}
-                        </button>
-                      </form>
-
-                      {txStatus.type !== "idle" && (
-                        <div className={`tx-status-box ${txStatus.type}`} id="tx-status-box" style={{ display: "block" }}>
-                          <div className="tsb-title">
-                            {txStatus.type === "pending" && <span className="spin">↻</span>}
-                            {txStatus.type === "success" && "✓"}
-                            {txStatus.type === "error" && "⚠"}
-                            {" " + txStatus.title}
-                          </div>
-                          <p>{txStatus.message}</p>
-                          {txStatus.type === "success" && (
-                            <>
-                              <div className="receipt-row">
-                                <code>{shorten(txStatus.hash, 8, 8)}</code>
-                                <button className="copy-btn" onClick={() => copyHash(txStatus.hash)} type="button">
-                                  {copiedHash === txStatus.hash ? "Copied!" : "Copy hash"}
-                                </button>
-                                <a href={`${STELLAR_EXPERT_TESTNET}/${txStatus.hash}`} target="_blank" rel="noreferrer">
-                                  View on StellarExpert ↗
-                                </a>
+                      ) : (
+                        <div style={{ display: "grid", gap: "8px" }}>
+                          {batchWorkers.map((w, idx) => (
+                            <div className="stream-row" key={idx} style={{ padding: "8px 0" }}>
+                              <div className="stream-info">
+                                <div className="name">{shorten(w.address, 6, 6)}</div>
+                                <div className="sub">Worker Wallet Address</div>
                               </div>
-                            </>
-                          )}
+                              <div className="stream-amt">
+                                <span className="n">{w.amount}</span>
+                                <span className="u">{vaultTokenSymbol}</span>
+                              </div>
+                              <button 
+                                className="btn btn-ghost btn-sm" 
+                                style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+                                onClick={() => setBatchWorkers(prev => prev.filter((_, i) => i !== idx))}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  )}
-                </>
+                  </div>
+
+                  <div className="panel" style={{ marginTop: "24px" }}>
+                    <div className="panel-head">
+                      <h3>Active Payroll Batches Log</h3>
+                    </div>
+                    {createdBatches.length === 0 ? (
+                      <div style={{ padding: "20px", textAlign: "center", color: "var(--ink-mute)", fontStyle: "italic" }}>
+                        No batches created on this vault yet.
+                      </div>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Batch ID</th>
+                            <th>Workers Count</th>
+                            <th>Total Locked Value</th>
+                            <th>Release Time Lock</th>
+                            <th>Claims Progress</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {createdBatches.map((b, idx) => (
+                            <tr key={idx}>
+                              <td className="mono"><strong>#{b.id.toString()}</strong></td>
+                              <td>{b.workerCount} workers</td>
+                              <td className="mono">{stroopsToXlm(b.totalAmount)} {vaultTokenSymbol}</td>
+                              <td>{new Date(Number(b.releaseTime) * 1000).toLocaleString()}</td>
+                              <td><span className="pill active">{b.claimedCount} claims logged</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
               )}
 
-              {userRole === "worker" && (
-                <>
-                  {/* Smart Vault Claims Panel */}
-                  <div className="panel">
-                    <div className="panel-head"><h3>Smart Payroll Claims Workspace</h3></div>
-                    
-                    <div className="contract-badge" style={{ marginBottom: "16px" }}>
-                      <div style={{ flex: 1, minWidth: 0, marginRight: "10px" }}>
-                        <span style={{ fontSize: "0.74rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>ACTIVE VAULT CONTRACT ID</span>
-                        <code>{vaultId}</code>
+              {/* 👷 WORKER CLAIM WORKSPACE */}
+              {userRole === "worker" && activeSidebarView === "claims" && (
+                <div className="view active">
+                  <div className="two-col">
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>Stellar Worker Claim Center</h3>
                       </div>
-                      <button className="copy-btn" onClick={() => navigator.clipboard.writeText(vaultId)}>Copy</button>
-                    </div>
 
-                    {renderErrorToast()}
+                      {vaultTxStatus.type === "pending" && (
+                        <div className="tx-status-box pending" style={{ marginBottom: "14px" }}>
+                          <div className="tsb-title">⏳ Simulating Claim Transaction</div>
+                          <p>{vaultTxStatus.message}</p>
+                        </div>
+                      )}
+                      {vaultTxStatus.type === "success" && (
+                        <div className="tx-status-box success" style={{ marginBottom: "14px" }}>
+                          <div className="tsb-title">✓ Claim Confirmed!</div>
+                          <p>{vaultTxStatus.message}</p>
+                        </div>
+                      )}
+                      {vaultTxStatus.type === "error" && (
+                        <div className="tx-status-box error" style={{ marginBottom: "14px" }}>
+                          <div className="tsb-title">✕ Claim Request Failed</div>
+                          <p>{vaultTxStatus.message}</p>
+                        </div>
+                      )}
 
-                    <label className="form-label">
-                      Claim Allocation Type
-                      <select 
-                        className="form-select"
-                        value={claimType}
-                        onChange={(e) => setClaimType(e.target.value as "instant" | "scheduled" | "streaming" | "batch")}
-                      >
-                        <option value="instant">Instant allocation</option>
-                        <option value="scheduled">Scheduled payments (Time-locked)</option>
-                        <option value="streaming">Active stream progress (Continuous)</option>
-                        <option value="batch">Multi-Worker batch payouts</option>
-                      </select>
-                    </label>
+                      <div className="workspace-tabs">
+                        <button className={`workspace-tab ${claimType === "instant" ? "active" : ""}`} onClick={() => setClaimType("instant")}>
+                          Standard Payout
+                        </button>
+                        <button className={`workspace-tab ${claimType === "scheduled" ? "active" : ""}`} onClick={() => setClaimType("scheduled")}>
+                          Scheduled Lock
+                        </button>
+                        <button className={`workspace-tab ${claimType === "streaming" ? "active" : ""}`} onClick={() => setClaimType("streaming")}>
+                          Continuous Stream
+                        </button>
+                        <button className={`workspace-tab ${claimType === "batch" ? "active" : ""}`} onClick={() => setClaimType("batch")}>
+                          Batch Claims
+                        </button>
+                      </div>
 
-                    <div style={{ marginTop: "14px" }}>
                       {claimType === "instant" && (
-                        <div className="stat-card" style={{ background: "var(--cream)", borderStyle: "dashed", margin: 0 }}>
-                          <div className="sc-label">CLAIMABLE INSTANT ALLOCATION</div>
-                          <div style={{ display: "flex", alignItems: "baseline" }}>
-                            <span className="sc-value" style={{ fontSize: "2rem" }}>
-                              {stroopsToXlm(workerAllocation)}
-                            </span>
-                            <span className="sc-unit">{vaultTokenSymbol}</span>
+                        <div>
+                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                            Claim standard un-locked allocations deposited by your employers.
                           </div>
+                          <div className="cert-row" style={{ marginBottom: "14px" }}>
+                            <span>Available Balance</span>
+                            <strong>{stroopsToXlm(workerAllocation)} {vaultTokenSymbol}</strong>
+                          </div>
+                          <button className="btn btn-primary" onClick={claimFromVault} disabled={sending || workerAllocation <= 0n} style={{ width: "100%" }}>
+                            Claim standard allocation
+                          </button>
                         </div>
                       )}
 
                       {claimType === "scheduled" && (
-                        <div style={{ display: "grid", gap: "10px" }}>
-                          <div className="sc-label">Scheduled time-locked payouts</div>
+                        <div>
+                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                            Time-locked allocations will become claimable after their respective unlock timestamps.
+                          </div>
                           {scheduledAllocations.length === 0 ? (
-                            <div className="hist-empty">No scheduled payouts found for your wallet.</div>
+                            <div style={{ padding: "14px", fontStyle: "italic", textAlign: "center", color: "var(--ink-mute)" }}>
+                              No scheduled locked allocations detected for your wallet address.
+                            </div>
                           ) : (
-                            scheduledAllocations.map((item, idx) => (
-                              <div className="allocation-item" key={idx} style={{ margin: 0 }}>
-                                <div>
-                                  <strong>{stroopsToXlm(item.amount)} {vaultTokenSymbol}</strong>
-                                  <div style={{ fontSize: "0.74rem", color: "var(--ink-muted)" }}>
-                                    Release: {item.friendlyReleaseTime}
-                                  </div>
+                            <div style={{ display: "grid", gap: "8px", marginBottom: "14px" }}>
+                              {scheduledAllocations.map((item, idx) => (
+                                <div className="cert-row" key={idx}>
+                                  <span>Release time: {item.friendlyReleaseTime}</span>
+                                  <strong style={{ color: item.locked ? "var(--gold)" : "var(--vault-deep)" }}>
+                                    {stroopsToXlm(item.amount)} {vaultTokenSymbol} ({item.locked ? "Locked" : "Unlocked"})
+                                  </strong>
                                 </div>
-                                <span className={`allocation-status ${item.locked ? "locked" : "unlocked"}`}>
-                                  {item.locked ? "Locked" : "Unlocked"}
-                                </span>
-                              </div>
-                            ))
+                              ))}
+                            </div>
                           )}
+                          <button className="btn btn-primary" onClick={claimFromVault} disabled={sending || !scheduledAllocations.some(s => !s.locked)} style={{ width: "100%" }}>
+                            Claim unlocked allocations
+                          </button>
                         </div>
                       )}
 
                       {claimType === "streaming" && (
-                        <div style={{ display: "grid", gap: "10px" }}>
-                          <div className="sc-label">Streaming payroll status</div>
+                        <div>
+                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                            Accruing payroll is streamed second-by-second and can be partially claimed at any moment.
+                          </div>
+                          
                           {streamDetails ? (
-                            <div className="stat-card" style={{ background: "var(--cream)", padding: "14px", margin: 0 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem" }}>
-                                <span>Sender: {shorten(streamDetails.sender, 5, 5)}</span>
-                                <strong>{streamProgress}% Claimed/Accrued</strong>
+                            <div style={{ marginBottom: "14px" }}>
+                              <div className="cert-row">
+                                <span>Accrued & Claimable</span>
+                                <strong>{stroopsToXlm(liveStreamClaimable)} {vaultTokenSymbol}</strong>
                               </div>
-
+                              <div className="cert-row">
+                                <span>Total Deployed Stream</span>
+                                <span>{stroopsToXlm(streamDetails.totalAmount)} {vaultTokenSymbol}</span>
+                              </div>
+                              <div className="cert-row">
+                                <span>Accrued Progress</span>
+                                <span>{streamProgress}%</span>
+                              </div>
                               <div className="progress-container">
                                 <div className="progress-bar" style={{ width: `${streamProgress}%` }}></div>
                               </div>
-
-                              <div className="stream-info-grid">
-                                <div className="stream-stat">
-                                  <div className="stream-stat-label">Total Stream</div>
-                                  <div className="stream-stat-val">{stroopsToXlm(streamDetails.totalAmount)} {vaultTokenSymbol}</div>
-                                </div>
-                                <div className="stream-stat">
-                                  <div className="stream-stat-label">Claimed Already</div>
-                                  <div className="stream-stat-val">{stroopsToXlm(streamDetails.claimedAmount)} {vaultTokenSymbol}</div>
-                                </div>
-                              </div>
-
-                              <div style={{ marginTop: "12px", borderTop: "1px dashed var(--border)", paddingTop: "8px", textAlign: "center" }}>
-                                <div className="sc-label" style={{ marginBottom: "2px" }}>ACCRUED CLAIMABLE (TICKING)</div>
-                                <span style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--sage)" }}>
-                                  {stroopsToXlm(liveStreamClaimable)} {vaultTokenSymbol}
-                                </span>
-                              </div>
                             </div>
                           ) : (
-                            <div className="hist-empty">No active stream found for your wallet.</div>
+                            <div style={{ padding: "14px", fontStyle: "italic", textAlign: "center", color: "var(--ink-mute)", marginBottom: "14px" }}>
+                              No active continuous stream found for your wallet address.
+                            </div>
                           )}
+                          <button className="btn btn-primary" onClick={claimFromVault} disabled={sending || !streamDetails || liveStreamClaimable <= 0n} style={{ width: "100%" }}>
+                            Claim streaming salary
+                          </button>
                         </div>
                       )}
 
                       {claimType === "batch" && (
-                        <div style={{ display: "grid", gap: "12px" }}>
-                          <div className="sc-label">Query Batch Payout Allocation</div>
-                          <div style={{ display: "flex", gap: "8px" }}>
+                        <div>
+                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                            Enter the Batch ID provided by your employer to query and claim your batch payout allocation.
+                          </div>
+                          
+                          <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
                             <input 
-                              type="number"
-                              className="form-input"
-                              placeholder="Enter Batch ID (e.g. 1)"
+                              type="number" 
+                              placeholder="Enter Batch ID (e.g. 1)" 
                               value={claimBatchIdInput}
                               onChange={(e) => setClaimBatchIdInput(e.target.value)}
-                              style={{ flex: 1 }}
                             />
-                            <button className="btn-outline" onClick={queryBatchPayout} disabled={sending} style={{ padding: "8px 16px" }}>
-                              Query
+                            <button className="btn btn-ghost" onClick={queryBatchPayout} disabled={sending}>
+                              Query Batch
                             </button>
                           </div>
 
                           {queriedBatchPayout && (
-                            <div style={{ background: "var(--cream)", border: "1px solid var(--border)", padding: "12px", borderRadius: "8px", display: "grid", gap: "6px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span>Batch #{queriedBatchPayout.batchId} Payout allocation</span>
+                            <div style={{ background: "var(--paper-dim)", padding: "12px", borderRadius: "8px", marginBottom: "14px" }}>
+                              <div className="cert-row">
+                                <span>Worker Allocation</span>
                                 <strong>{stroopsToXlm(queriedBatchPayout.amount)} {vaultTokenSymbol}</strong>
                               </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-                                <span style={{ color: queriedBatchPayout.claimed ? "#a94442" : "var(--sage)", fontWeight: "bold" }}>
-                                  Status: {queriedBatchPayout.claimed ? "Claimed ❌" : "Available to Claim ✅"}
-                                </span>
+                              <div className="cert-row">
+                                <span>Claim Status</span>
+                                <span>{queriedBatchPayout.claimed ? "Claimed" : "Unclaimed"}</span>
                               </div>
+                              
+                              {!queriedBatchPayout.claimed && (
+                                <button className="btn btn-primary" onClick={claimBatchPayout} disabled={sending} style={{ width: "100%", marginTop: "12px" }}>
+                                  Claim Batch Allocation
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
                       )}
                     </div>
 
-                    <button 
-                      id="btn-send" 
-                      onClick={claimType === "batch" ? claimBatchPayout : claimFromVault} 
-                      style={{ marginTop: "14px" }}
-                      disabled={
-                        sending || 
-                        (claimType === "instant" && workerAllocation === 0n) ||
-                        (claimType === "scheduled" && !scheduledAllocations.some(item => !item.locked)) ||
-                        (claimType === "streaming" && liveStreamClaimable === 0n) ||
-                        (claimType === "batch" && (!queriedBatchPayout || queriedBatchPayout.claimed))
-                      }
-                    >
-                      {sending ? " Claiming…" : ` Claim (${claimType})`}
-                    </button>
-
-                    {vaultTxStatus.type !== "idle" && (
-                      <div className={`tx-status-box ${vaultTxStatus.type}`} style={{ display: "block", marginTop: "14px" }}>
-                        <div className="tsb-title">
-                          {vaultTxStatus.type === "pending" && <span className="spin">↻</span>}
-                          {vaultTxStatus.type === "success" && "✓"}
-                          {vaultTxStatus.type === "error" && "⚠"}
-                          {" " + vaultTxStatus.title}
-                        </div>
-                        <p>{vaultTxStatus.message}</p>
-                        {vaultTxStatus.type === "success" && (
-                          <div className="receipt-row">
-                            <code>{shorten(vaultTxStatus.hash, 8, 8)}</code>
-                            <button className="copy-btn" onClick={() => copyHash(vaultTxStatus.hash, true)} type="button">
-                              {copiedVaultHash === vaultTxStatus.hash ? "Copied!" : "Copy hash"}
-                            </button>
-                            <a href={`${STELLAR_EXPERT_TESTNET}/${vaultTxStatus.hash}`} target="_blank" rel="noreferrer">
-                              View on StellarExpert ↗
-                            </a>
-                          </div>
-                        )}
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>Discovered Vault Allocations</h3>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Selective On-Chain Income Proof Generator Panel */}
-                  <div className="panel">
-                    <div className="panel-head"><h3>On-Chain Income Proof Generator</h3></div>
-                    <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                      Prove your cumulative income history trustlessly on-chain without revealing your entire wallet statements.
+                      
+                      {myAvailableVaults.length === 0 ? (
+                        <div style={{ padding: "20px", textAlign: "center", color: "var(--ink-mute)", fontStyle: "italic" }}>
+                          No active payroll allocations found for your wallet address.
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: "10px" }}>
+                          {myAvailableVaults.map((item, idx) => (
+                            <div className="stream-row" key={idx} style={{ padding: "8px 0" }}>
+                              <div className="stream-info">
+                                <div className="name">{shorten(item.address, 8, 8)}</div>
+                                <div className="sub">
+                                  {item.hasStream ? "Continuous Stream active " : ""}
+                                  {item.hasScheduled ? "Time lock active " : ""}
+                                </div>
+                              </div>
+                              <button className="btn btn-ghost btn-sm" onClick={() => { setVaultId(item.address); toast(`Switched active vault: ${shorten(item.address)}`); void loadVaultState(); }}>
+                                Route to Vault
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
-                    {renderErrorToast()}
-
-                    <div className="form-row-2" style={{ gap: "8px", margin: 0, marginBottom: "14px" }}>
-                      <label className="form-label" style={{ margin: 0 }}>
-                        Start Date Range
-                        <input 
-                          type="date"
-                          className="form-input"
-                          value={proofStartDate}
-                          onChange={(e) => setProofStartDate(e.target.value)}
-                        />
-                      </label>
-                      <label className="form-label" style={{ margin: 0 }}>
-                        End Date Range
-                        <input 
-                          type="date"
-                          className="form-input"
-                          value={proofEndDate}
-                          onChange={(e) => setProofEndDate(e.target.value)}
-                        />
-                      </label>
-                    </div>
-
-                    <button className="btn-outline" onClick={generateIncomeProof} disabled={sending} style={{ width: "100%" }}>
-                      Generate Cryptographic Proof
-                    </button>
-
-                    {generatedProof && (
-                      <div style={{ background: "var(--cream)", border: "1px dashed var(--sage)", padding: "14px", borderRadius: "8px", marginTop: "14px", display: "grid", gap: "8px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border)", paddingBottom: "6px" }}>
-                          <span style={{ fontWeight: 600 }}>Total Verified Payouts:</span>
-                          <strong style={{ color: "var(--sage)" }}>{stroopsToXlm(generatedProof.amount)} {vaultTokenSymbol}</strong>
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--ink-muted)" }}>
-                          Date window: {new Date(generatedProof.start * 1000).toLocaleDateString()} to {new Date(generatedProof.end * 1000).toLocaleDateString()}
-                        </div>
-                        <div>
-                          <span style={{ fontSize: "0.72rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>CRYPTOGRAPHIC ON-CHAIN PROOF HASH</span>
-                          <code style={{ fontSize: "0.75rem", background: "#fff", display: "block", wordBreak: "break-all", padding: "6px", borderRadius: "4px", border: "1px solid var(--border)" }}>
-                            {generatedProof.hash}
-                          </code>
-                        </div>
-                        <button 
-                          className="copy-btn"
-                          onClick={() => {
-                            navigator.clipboard.writeText(generatedProof.hash);
-                          }}
-                          style={{ justifySelf: "end" }}
-                        >
-                          Copy Proof Hash
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </>
+                </div>
               )}
 
-              {userRole === "verifier" && (
-                <div className="panel">
-                  <div className="panel-head"><h3>Third-Party Income Verification Portal</h3></div>
-                  <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                    Input a worker's payroll claim credentials along with their generated proof hash to query verification trustlessly on-chain.
+              {/* 📄 INCOME PROOFS VIEW */}
+              {userRole === "worker" && activeSidebarView === "proofs" && (
+                <div className="view active">
+                  <div className="two-col">
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>Generate Cryptographic Income Proof</h3>
+                      </div>
+                      <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                        Select the date range window. The smart contract calculates the sum of all payouts claimed by your wallet inside that window and signs it cryptographically.
+                      </div>
+
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Start Date</label>
+                          <input type="date" value={proofStartDate} onChange={(e) => setProofStartDate(e.target.value)} />
+                        </div>
+                        <div className="field">
+                          <label>End Date</label>
+                          <input type="date" value={proofEndDate} onChange={(e) => setProofEndDate(e.target.value)} />
+                        </div>
+                      </div>
+
+                      <button className="btn btn-primary" onClick={generateIncomeProof} disabled={sending} style={{ width: "100%", marginTop: "10px" }}>
+                        Generate Proof Hash
+                      </button>
+                    </div>
+
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>Income Certificate Preview</h3>
+                      </div>
+                      {generatedProof ? (
+                        <div>
+                          <div className="certificate">
+                            <div className="cert-top">
+                              <div>
+                                <span className="eyebrow" style={{ color: "var(--ink-muted)" }}>Verified Salary</span>
+                                <div className="display" style={{ fontSize: "1.15rem", marginTop: "6px" }}>Proof Certificate</div>
+                              </div>
+                              <div className="stamp">verified<br />on-chain</div>
+                            </div>
+                            <div className="cert-row">
+                              <span>Worker</span>
+                              <span>{shorten(stellarWallet.address, 6, 6)}</span>
+                            </div>
+                            <div className="cert-row">
+                              <span>Period</span>
+                              <span>
+                                {new Date(generatedProof.start * 1000).toLocaleDateString()} – {new Date(generatedProof.end * 1000).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="cert-row">
+                              <span>Verified amount</span>
+                              <strong>{stroopsToXlm(generatedProof.amount)} {vaultTokenSymbol}</strong>
+                            </div>
+                            <div className="cert-hash">proof · {generatedProof.hash}</div>
+                          </div>
+
+                          <div className="modal-actions" style={{ justifyContent: "flex-start", marginTop: "18px" }}>
+                            <button className="btn btn-primary btn-sm" onClick={() => { navigator.clipboard.writeText(generatedProof.hash); toast("Proof hash copied to clipboard!"); }}>
+                              Copy Proof Hash
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: "40px", color: "var(--ink-mute)", textAlign: "center", fontStyle: "italic" }}>
+                          Fill the parameters and click generate to load certificate preview.
+                        </div>
+                      )}
+                    </div>
                   </div>
+                </div>
+              )}
 
-                  {renderErrorToast()}
+              {/* 🔍 VERIFIER VIEW */}
+              {userRole === "verifier" && activeSidebarView === "portal" && (
+                <div className="view active">
+                  <div className="panel" style={{ maxWidth: "700px", margin: "0 auto" }}>
+                    <div className="panel-head">
+                      <h3>Third-Party Income Verification Portal</h3>
+                    </div>
+                    <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                      Third-party institutions (such as landlords or lenders) check and verify worker income credentials trustlessly against on-chain transaction history.
+                    </div>
 
-                  <div style={{ display: "grid", gap: "12px" }}>
-                    <label className="form-label" style={{ margin: 0 }}>
-                      Worker Wallet Address (G…)
+                    <div className="field">
+                      <label>Worker Wallet Address (G...)</label>
                       <input 
-                        className="form-input"
-                        placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                        type="text" 
+                        placeholder="G..." 
                         value={verifierWorker}
                         onChange={(e) => setVerifierWorker(e.target.value)}
                       />
-                    </label>
-
-                    <div className="form-row-2" style={{ gap: "8px", margin: 0 }}>
-                      <label className="form-label" style={{ margin: 0 }}>
-                        Start Date Range
-                        <input 
-                          type="date"
-                          className="form-input"
-                          value={verifierStart}
-                          onChange={(e) => setVerifierStart(e.target.value)}
-                        />
-                      </label>
-                      <label className="form-label" style={{ margin: 0 }}>
-                        End Date Range
-                        <input 
-                          type="date"
-                          className="form-input"
-                          value={verifierEnd}
-                          onChange={(e) => setVerifierEnd(e.target.value)}
-                        />
-                      </label>
                     </div>
 
-                    <div className="form-row-2" style={{ gap: "8px", margin: 0 }}>
-                      <label className="form-label" style={{ margin: 0 }}>
-                        Declared Total Earnings (Tokens)
-                        <input 
-                          type="number"
-                          step="any"
-                          className="form-input"
-                          placeholder="e.g. 500.0"
-                          value={verifierAmount}
-                          onChange={(e) => setVerifierAmount(e.target.value)}
-                        />
-                      </label>
-                      <label className="form-label" style={{ margin: 0 }}>
-                        Cryptographic Proof Hash
-                        <input 
-                          className="form-input"
-                          placeholder="32-byte sha256 hex string"
-                          value={verifierHash}
-                          onChange={(e) => setVerifierHash(e.target.value)}
-                        />
-                      </label>
+                    <div className="field-row">
+                      <div className="field">
+                        <label>Start Date</label>
+                        <input type="date" value={verifierStart} onChange={(e) => setVerifierStart(e.target.value)} />
+                      </div>
+                      <div className="field">
+                        <label>End Date</label>
+                        <input type="date" value={verifierEnd} onChange={(e) => setVerifierEnd(e.target.value)} />
+                      </div>
                     </div>
 
-                    <button className="btn-primary" onClick={verifyIncomeProof} disabled={sending}>
-                      {verificationResult === "pending" ? "Querying Ledger..." : "Verify Proof On-Chain"}
+                    <div className="field-row">
+                      <div className="field">
+                        <label>Declared Payout Amount ({vaultTokenSymbol})</label>
+                        <input type="number" step="any" placeholder="500.0" value={verifierAmount} onChange={(e) => setVerifierAmount(e.target.value)} />
+                      </div>
+                      <div className="field">
+                        <label>Verification Proof Hash</label>
+                        <input type="text" placeholder="32-byte hash hex string" value={verifierHash} onChange={(e) => setVerifierHash(e.target.value)} />
+                      </div>
+                    </div>
+
+                    <button className="btn btn-primary" onClick={verifyIncomeProof} disabled={sending} style={{ width: "100%", marginTop: "10px" }}>
+                      {verificationResult === "pending" ? "Querying chain..." : "Verify Proof On-Chain"}
                     </button>
 
                     {verificationResult === "valid" && (
-                      <div className="notice ok" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "16px", margin: 0, fontSize: "0.95rem" }}>
-                        <span style={{ fontSize: "1.5rem" }}>✅</span>
-                        <div>
-                          <strong>VERIFIED SUCCESSFUL</strong>
-                          <div style={{ fontSize: "0.75rem", marginTop: "2px" }}>The worker's payout history on the Stellar ledger matches the cryptographic hash.</div>
-                        </div>
+                      <div className="tx-status-box success" style={{ marginTop: "14px", textAlign: "center" }}>
+                        <span style={{ fontSize: "2rem", display: "block" }}>🛡️</span>
+                        <strong style={{ fontSize: "1.1rem", color: "var(--sage)" }}>CRYPTOGRAPHICALLY VERIFIED!</strong>
+                        <p style={{ marginTop: "4px" }}>The declared salary matches worker claim history records verified on-chain.</p>
                       </div>
                     )}
-
                     {verificationResult === "invalid" && (
-                      <div className="notice error" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "16px", margin: 0, fontSize: "0.95rem" }}>
-                        <span style={{ fontSize: "1.5rem" }}>❌</span>
-                        <div>
-                          <strong>VERIFICATION FAILED</strong>
-                          <div style={{ fontSize: "0.75rem", marginTop: "2px" }}>The hash does not match, or the stated income does not align with the worker's ledger history.</div>
-                        </div>
+                      <div className="tx-status-box error" style={{ marginTop: "14px", textAlign: "center" }}>
+                        <span style={{ fontSize: "2rem", display: "block" }}>✕</span>
+                        <strong style={{ fontSize: "1.1rem", color: "var(--danger)" }}>INVALID HASH OR PARAMETERS!</strong>
+                        <p style={{ marginTop: "4px" }}>The details or proof hash did not match on-chain ledger records.</p>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* Wallet details panel */}
-              <div className="panel">
-                <div className="panel-head"><h3>Wallet info</h3></div>
-                
-                <div id="wallet-warning">
-                  <div className="notice info">Connected on Stellar Testnet — ready to execute.</div>
-                </div>
-                
-                <div className="info-row">
-                  <span className="ir-label">Status</span>
-                  <span className="ir-val ok">Connected</span>
-                </div>
-                <div className="info-row">
-                  <span className="ir-label">Public key</span>
-                  <span className="ir-val" id="info-addr" style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>
-                    {stellarWallet.address || "—"}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="ir-label">Wallet Adapter</span>
-                  <span className="ir-val ok" id="info-network">
-                    {walletName}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span className="ir-label">Balance</span>
-                  <span className="ir-val" id="info-balance">{formattedBalance} XLM</span>
-                </div>
-                <div className="info-row">
-                  <span className="ir-label">Horizon Server</span>
-                  <span className="ir-val" style={{ fontSize: "0.78rem" }}>horizon-testnet.stellar.org</span>
-                </div>
-              </div>
-
-              {/* Feedback and Onboarding Registry Panel */}
-              <div className="panel" style={{ marginTop: "18px" }}>
-                <div className="panel-head"><h3>User Onboarding & Feedback Registry</h3></div>
-                <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                  Join the ProofPay pilot! Submit your user feedback and wallet rating below. Requires connected wallet.
-                </div>
-
-                <div style={{ display: "grid", gap: "10px", marginBottom: "16px" }}>
-                  <div className="form-row-2" style={{ gap: "8px", margin: 0 }}>
-                    <label className="form-label" style={{ margin: 0 }}>
-                      Name / Org
-                      <input 
-                        className="form-input"
-                        placeholder="Alice / Acme Corp"
-                        value={feedbackName}
-                        onChange={(e) => setFeedbackName(e.target.value)}
-                        style={{ padding: "8px" }}
-                      />
-                    </label>
-                    <label className="form-label" style={{ margin: 0 }}>
-                      Onboarding Role
-                      <select
-                        className="form-select"
-                        value={feedbackRole}
-                        onChange={(e) => setFeedbackRole(e.target.value)}
-                        style={{ padding: "8px" }}
-                      >
-                        <option value="Worker">Worker / Remote Contractor</option>
-                        <option value="Employer">Employer / Enterprise</option>
-                        <option value="Third-Party Verifier">Third-Party Verifier</option>
-                      </select>
-                    </label>
-                  </div>
-                  <label className="form-label" style={{ margin: 0 }}>
-                    Feedback Notes & Rating
-                    <textarea 
-                      className="form-input"
-                      placeholder="Excellent speed! Dispersed batch payouts in seconds."
-                      value={feedbackText}
-                      onChange={(e) => setFeedbackText(e.target.value)}
-                      rows={2}
-                      style={{ padding: "8px", fontFamily: "inherit", resize: "vertical" }}
-                    />
-                  </label>
-                  <button className="btn-primary" onClick={submitFeedback} style={{ padding: "8px 12px" }}>
-                    Register Feedback
-                  </button>
-                </div>
-
-                <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--sage)", marginBottom: "8px" }}>👥 Connected Pilot Registry ({feedbackList.length} total):</div>
-                  <div style={{ display: "grid", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
-                    {feedbackList.map((f, idx) => (
-                      <div key={idx} style={{ background: "var(--cream)", border: "1px solid var(--border)", padding: "10px", borderRadius: "8px", fontSize: "0.78rem" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
-                          <span>{f.name} ({f.role})</span>
-                          <span style={{ fontSize: "0.7rem", color: "var(--ink-muted)" }}>{f.date}</span>
-                        </div>
-                        <div style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "var(--sage)", marginTop: "2px" }}>
-                          Wallet: {shorten(f.address, 10, 10)}
-                        </div>
-                        <p style={{ margin: "6px 0 0 0", color: "var(--ink)" }}>"{f.text}"</p>
+              {/* ⚙️ SETTINGS VIEW */}
+              {activeSidebarView === "settings" && (
+                <div className="view active">
+                  <div className="panel">
+                    <div className="panel-head"><h3>Network Settings</h3></div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="t">Stellar Testnet Node</div>
+                        <div className="d">All payroll operations compile and broadcast to testnet RPC.</div>
                       </div>
-                    ))}
+                      <label className="switch">
+                        <input type="checkbox" checked disabled />
+                        <span className="slider"></span>
+                      </label>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="t">Stellar Mainnet Node</div>
+                        <div className="d">Locked until formal smart contract audits.</div>
+                      </div>
+                      <label className="switch">
+                        <input type="checkbox" disabled />
+                        <span className="slider"></span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-head"><h3>Worker Onboarding Feedback Registry</h3></div>
+                    <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
+                      Connected pilot remote worker or employer reviews. Submit feedback below to add to the dynamic registry!
+                    </div>
+
+                    <form onSubmit={submitFeedback} style={{ display: "grid", gap: "10px", marginBottom: "20px" }}>
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Full Name</label>
+                          <input type="text" placeholder="e.g. Priyanshu Sharma" value={feedbackName} onChange={(e) => setFeedbackName(e.target.value)} />
+                        </div>
+                        <div className="field">
+                          <label>Workspace Role</label>
+                          <select value={feedbackRole} onChange={(e) => setFeedbackRole(e.target.value)}>
+                            <option value="Worker">Worker</option>
+                            <option value="Employer">Employer</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label>Review / Feedback</label>
+                        <textarea placeholder="Write feedback notes..." rows={2} value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} />
+                      </div>
+                      <button className="btn btn-ghost" type="submit" style={{ justifySelf: "start" }}>
+                        Submit Review
+                      </button>
+                    </form>
+
+                    <div className="registry-list">
+                      {feedbackList.length === 0 ? (
+                        <div style={{ padding: "14px", fontStyle: "italic", color: "var(--ink-mute)", textAlign: "center" }}>
+                          No reviews submitted yet. Use the form above to add a dynamic entry!
+                        </div>
+                      ) : (
+                        feedbackList.map((f, idx) => (
+                          <div className="registry-item" key={idx}>
+                            <div className="registry-header">
+                              <strong>{f.name} ({f.role})</strong>
+                              <span>{f.date}</span>
+                            </div>
+                            <div className="registry-text">"{f.text}"</div>
+                            <div style={{ fontSize: "0.7rem", color: "var(--ink-mute)", marginTop: "4px" }}>
+                              Sender Address: {shorten(f.address, 8, 8)}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-head"><h3>Account Operations</h3></div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="t">Disconnect Stellar Wallet</div>
+                        <div className="d">Ends active session. You'll need to reconnect using Freighter to authorize payrolls.</div>
+                      </div>
+                      <button className="btn btn-danger-ghost btn-sm" onClick={disconnectWallet}>
+                        Disconnect
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
             </div>
-
-            {/* Column 2 Panels */}
-            <div style={{ display: "grid", gap: "18px", alignContent: "start" }}>
-              
-              {/* Live Activity Feed */}
-              <div className="panel">
-                <div className="panel-head" style={{ marginBottom: "14px" }}>
-                  <h3>Live Activity Feed</h3>
-                  <div className="streaming-indicator">
-                    <span className="feed-dot"></span>
-                    <span>{isStreamingEvents ? "live streaming" : "offline"}</span>
-                  </div>
-                </div>
-                
-                {activityFeed.length === 0 ? (
-                  <div className="hist-empty">Waiting for contract events... Try depositing XLM.</div>
-                ) : (
-                  <div className="activity-feed">
-                    {activityFeed.map((evt, idx) => (
-                      <div className="feed-item" key={evt.txHash + evt.type + idx}>
-                        <div className={`feed-icon ${evt.type.includes("Claim") ? "claim" : "deposit"}`}>
-                          {evt.type.includes("Claim") ? (
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="19" x2="12" y2="5" />
-                              <polyline points="5 12 12 5 19 12" />
-                            </svg>
-                          ) : (
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <polyline points="19 12 12 19 5 12" />
-                            </svg>
-                          )}
-                        </div>
-                        <div className="feed-content">
-                          <div className="feed-title">
-                            {evt.type === "PayrollDeposited" && (
-                              <span>
-                                <strong>{stroopsToXlm(evt.amount)} XLM</strong> deposited for <strong>{shorten(evt.worker, 4, 4)}</strong>
-                              </span>
-                            )}
-                            {evt.type === "PayrollClaimed" && (
-                              <span>
-                                <strong>{shorten(evt.worker, 4, 4)}</strong> claimed <strong>{stroopsToXlm(evt.amount)} XLM</strong>
-                              </span>
-                            )}
-                            {evt.type === "ScheduledDeposited" && (
-                              <span>
-                                <strong>{stroopsToXlm(evt.amount)} XLM</strong> scheduled (time-locked) for <strong>{shorten(evt.worker, 4, 4)}</strong>
-                              </span>
-                            )}
-                            {evt.type === "ScheduledClaimed" && (
-                              <span>
-                                <strong>{shorten(evt.worker, 4, 4)}</strong> claimed scheduled <strong>{stroopsToXlm(evt.amount)} XLM</strong>
-                              </span>
-                            )}
-                            {evt.type === "StreamCreated" && (
-                              <span>
-                                <strong>{stroopsToXlm(evt.amount)} XLM</strong> stream initialized for <strong>{shorten(evt.worker, 4, 4)}</strong>
-                              </span>
-                            )}
-                            {evt.type === "StreamClaimed" && (
-                              <span>
-                                <strong>{shorten(evt.worker, 4, 4)}</strong> claimed stream <strong>{stroopsToXlm(evt.amount)} XLM</strong>
-                              </span>
-                            )}
-                          </div>
-                          <div className="feed-sub">
-                            {evt.from && `From: ${shorten(evt.from, 4, 4)} · `}Ledger {evt.ledger}
-                          </div>
-                        </div>
-                        <div className="feed-status">
-                          <a href={`${STELLAR_EXPERT_TESTNET}/${evt.txHash}`} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "none" }}>
-                            ↗
-                          </a>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Transaction History (classic payroll) */}
-              <div className="panel">
-                <div className="panel-head">
-                  <h3>Direct Transaction history</h3>
-                  <span className="ph-sub" id="hist-count">{txCount} sent this session</span>
-                </div>
-                <div className="hist-list" id="hist-list">
-                  {history.length === 0 ? (
-                    <div className="hist-empty">No direct payments sent this session.</div>
-                  ) : (
-                    history.slice().reverse().map((tx) => (
-                      <div className="hist-item" key={tx.id}>
-                        <div className="hi-left">
-                          <div className="hi-icon">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" strokeWidth="2">
-                              <line x1="22" y1="2" x2="11" y2="13" />
-                              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                            </svg>
-                          </div>
-                          <div>
-                            <div className="hi-label">{tx.amount} XLM → {shorten(tx.to, 6, 6)}</div>
-                            <div className="hi-sub">{tx.memo ? tx.memo + " · " : ""}Ledger {tx.ledger || "?"}</div>
-                          </div>
-                        </div>
-                        <div className="hi-right">
-                          <div className="hi-amt">Sent</div>
-                          <div className="hi-hash">
-                            <a href={`${STELLAR_EXPERT_TESTNET}/${tx.hash}`} target="_blank" rel="noreferrer" style={{ color: "var(--sage)", textDecoration: "none", fontSize: "0.72rem" }}>
-                              {shorten(tx.hash, 6, 6)} ↗
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Telemetry Analytics Dashboard Widget */}
-              <div className="panel" style={{ marginTop: "18px" }}>
-                <div className="panel-head" style={{ marginBottom: "14px" }}>
-                  <h3>System Telemetry & Performance Metrics</h3>
-                  <div className="streaming-indicator">
-                    <span className="feed-dot" style={{ backgroundColor: "#4caf50" }}></span>
-                    <span style={{ color: "var(--sage)", fontWeight: 600 }}>Active telemetry</span>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: "12px" }}>
-                  {/* Metric 1 */}
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: "4px" }}>
-                      <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>Stellar RPC Query Latency</span>
-                      <strong style={{ color: "var(--sage)" }}>142 ms</strong>
-                    </div>
-                    <div className="progress-container" style={{ height: "6px" }}>
-                      <div className="progress-bar" style={{ width: "35%", backgroundColor: "var(--sage)" }}></div>
-                    </div>
-                  </div>
-
-                  {/* Metric 2 */}
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: "4px" }}>
-                      <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>Soroban VM execution Gas (CPU Limit)</span>
-                      <strong style={{ color: "var(--ink)" }}>4.21M / 100M instructions</strong>
-                    </div>
-                    <div className="progress-container" style={{ height: "6px" }}>
-                      <div className="progress-bar" style={{ width: "4.21%", backgroundColor: "var(--ink)" }}></div>
-                    </div>
-                  </div>
-
-                  {/* Metric 3 */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "4px" }}>
-                    <div style={{ background: "var(--cream)", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center" }}>
-                      <span style={{ fontSize: "0.7rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>ON-CHAIN SUCCESS RATE</span>
-                      <strong style={{ fontSize: "1.2rem", color: "var(--sage)", display: "block", marginTop: "2px" }}>100 %</strong>
-                    </div>
-                    <div style={{ background: "var(--cream)", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center" }}>
-                      <span style={{ fontSize: "0.7rem", display: "block", color: "var(--ink-muted)", fontWeight: 600 }}>VERIFIER SIMULATION LATENCY</span>
-                      <strong style={{ fontSize: "1.2rem", color: "var(--ink)", display: "block", marginTop: "2px" }}>2.4s</strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
         </div>
+      )}
+
+      {/* ── MODALS & DRAWER OVERLAYS ── */}
+      
+      {/* Deploy Vault Modal */}
+      <div className={`modal-backdrop ${modalVaultOpen ? "open" : ""}`}>
+        <div className="modal">
+          <div className="modal-head">
+            <h3>Deploy a new dynamic vault</h3>
+            <button className="modal-close" onClick={() => setModalVaultOpen(false)}>&times;</button>
+          </div>
+          
+          {vaultTxStatus.type === "pending" && (
+            <div className="tx-status-box pending" style={{ marginBottom: "14px" }}>
+              <div className="tsb-title">⏳ Deploying Vault</div>
+              <p>{vaultTxStatus.message}</p>
+            </div>
+          )}
+          {vaultTxStatus.type === "success" && (
+            <div className="tx-status-box success" style={{ marginBottom: "14px" }}>
+              <div className="tsb-title">✓ Deployed!</div>
+              <p>{vaultTxStatus.message}</p>
+            </div>
+          )}
+          {vaultTxStatus.type === "error" && (
+            <div className="tx-status-box error" style={{ marginBottom: "14px" }}>
+              <div className="tsb-title">✕ Deployment Failed</div>
+              <p>{vaultTxStatus.message}</p>
+            </div>
+          )}
+
+          <form onSubmit={(e) => { e.preventDefault(); void deployDynamicVault(); }}>
+            <div className="field">
+              <label>Currency Asset Standard</label>
+              <select value={deployedTokenType} onChange={(e) => setDeployedTokenType(e.target.value as any)}>
+                <option value="XLM">Native XLM Token</option>
+                <option value="USDC">Testnet USDC Token Stablecoin</option>
+                <option value="CUSTOM">Custom SAC Token Address</option>
+              </select>
+            </div>
+
+            {deployedTokenType === "CUSTOM" && (
+              <div className="field">
+                <label>Custom SAC Token Address (C...)</label>
+                <input 
+                  type="text" 
+                  placeholder="C..." 
+                  value={customTokenSAC} 
+                  onChange={(e) => setCustomTokenSAC(e.target.value)} 
+                />
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModalVaultOpen(false)}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={sending}>
+                Deploy Vault
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
+
+      {/* Add Teammate Modal */}
+      <div className={`modal-backdrop ${modalTeamOpen ? "open" : ""}`}>
+        <div className="modal">
+          <div className="modal-head">
+            <h3>Add a teammate</h3>
+            <button className="modal-close" onClick={() => setModalTeamOpen(false)}>&times;</button>
+          </div>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const el = e.target as any;
+            const name = el.ntName.value;
+            const role = el.ntRole.value;
+            const rate = el.ntRate.value;
+            const asset = el.ntAsset.value;
+            const vlt = el.ntVault.value;
+            setTeamList(prev => [...prev, { name, role, rate: `${rate} ${asset}`, vault: vlt, status: "active" }]);
+            setModalTeamOpen(false);
+            el.reset();
+            toast(`Added ${name} to teammate registry!`);
+          }}>
+            <div className="field">
+              <label>Full Name</label>
+              <input name="ntName" required placeholder="e.g. Sofia Marchetti" />
+            </div>
+            <div className="field">
+              <label>Teammate Job Role</label>
+              <input name="ntRole" required placeholder="e.g. Frontend developer" />
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label>Rate (per month)</label>
+                <input name="ntRate" type="number" required placeholder="800" />
+              </div>
+              <div className="field">
+                <label>Currency Asset</label>
+                <select name="ntAsset">
+                  <option value="XLM">XLM</option>
+                  <option value="USDC">USDC</option>
+                </select>
+              </div>
+            </div>
+            <div className="field">
+              <label>Payroll Vault Allocation</label>
+              <select name="ntVault">
+                <option value="Engineering — Streaming">Engineering — Streaming</option>
+                <option value="Design — Streaming">Design — Streaming</option>
+                <option value="Contractors — Scheduled">Contractors — Scheduled</option>
+              </select>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModalTeamOpen(false)}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm">Add teammate</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Vault Details Drawer */}
+      <div className={`drawer-backdrop ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)}></div>
+      <div className={`drawer ${drawerOpen ? "open" : ""}`}>
+        <button className="drawer-close" onClick={() => setDrawerOpen(false)}>&times;</button>
+        {drawerVault && (
+          <div>
+            <span className="eyebrow" style={{ color: "var(--ink-muted)" }}>Vault details</span>
+            <h2 className="display" style={{ fontSize: "1.45rem", margin: "12px 0 4px" }}>{drawerVault.name}</h2>
+            <div className="mono" style={{ fontSize: "0.78rem", color: "var(--ink-mute)", marginBottom: "22px" }}>
+              {drawerVault.type} · {drawerVault.asset}
+            </div>
+            <div className="cert-row">
+              <span>Contract Address</span>
+              <span className="mono">{shorten(drawerVault.id, 8, 8)}</span>
+            </div>
+            <div className="cert-row">
+              <span>Current TVL Balance</span>
+              <span>{drawerVault.balance.toLocaleString()} {drawerVault.asset}</span>
+            </div>
+            <div className="cert-row">
+              <span>Status</span>
+              <span style={{ textTransform: "capitalize" }}>{drawerVault.status}</span>
+            </div>
+            <div className="cert-row">
+              <span>Allocated Workers</span>
+              <span>{drawerVault.workers} worker(s)</span>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: "28px", justifyContent: "flex-start", gap: "10px" }}>
+              <button className="btn btn-primary btn-sm" onClick={() => {
+                if (drawerVault.id.startsWith("C")) {
+                  setVaultId(drawerVault.id);
+                  setUseCustomVault(true);
+                  setDrawerOpen(false);
+                  toast(`Routed active workspace to Vault: ${shorten(drawerVault.id)}`);
+                  void loadVaultState();
+                } else {
+                  setUseCustomVault(false);
+                  setDrawerOpen(false);
+                  toast(`Routed active workspace to Default System Vault`);
+                  void loadVaultState();
+                }
+              }}>
+                Activate Route
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => {
+                navigator.clipboard.writeText(drawerVault.id);
+                toast("Vault Address Copied!");
+              }}>
+                Copy ID
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="toast-wrap" id="toast-wrap"></div>
     </>
   );
 }
