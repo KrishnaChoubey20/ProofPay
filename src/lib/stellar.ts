@@ -27,8 +27,8 @@ export const rpc = new StellarSdk.rpc.Server(
 );
 
 // ── Factory & Vault contract IDs ─────────────────────────────────────────────
-export const FACTORY_CONTRACT_ID = "CB4APYC7KJRCXO2AH6SLYNB3FSUZYBIYW2J47S4JXI6ILNQ7TX6X4RFX";
-export const VAULT_CONTRACT_ID = "CDHJGGDSEOTXHNYV7Y2CQYU5CX3CV4ZOB5EDWDO4QPYHAKNWUPNYNPJQ";
+export const FACTORY_CONTRACT_ID = (import.meta as any).env.VITE_FACTORY_CONTRACT_ID || "CB4APYC7KJRCXO2AH6SLYNB3FSUZYBIYW2J47S4JXI6ILNQ7TX6X4RFX";
+export const VAULT_CONTRACT_ID = (import.meta as any).env.VITE_VAULT_CONTRACT_ID || "CDHJGGDSEOTXHNYV7Y2CQYU5CX3CV4ZOB5EDWDO4QPYHAKNWUPNYNPJQ";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
