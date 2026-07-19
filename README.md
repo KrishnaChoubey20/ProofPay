@@ -21,14 +21,11 @@ ProofPay aims to solve the compliance and privacy issues of remote web3 payments
 
 This repository houses the step-by-step evolution of ProofPay across the challenge levels:
 
-### 🟠 [Level 3 — Orange Belt (Current Level)](./LEVEL3_ORANGE_BELT_README.md)
-*   **Focus:** Advanced smart contracts, dynamic factory pattern, time-locked scheduled payments, real-time continuous linear streams, Vitest/Cargo automated testing, and CI/CD pipeline integration.
-*   **Key Implementations:**
-    *   **Dynamic Vault Factory:** On-chain factory contract (`ProofPayFactory`) enabling employers to spin up dynamic vaults.
-    *   **Time-locked Scheduled Payments:** Locked deposits released only after a target date/time.
-    *   **Linear Payroll Streaming:** Accumulates XLM second-by-second with a real-time ticking UI and progress bar.
-    *   **CI/CD Pipeline:** Automated GitHub Actions pipeline for testing and building Rust contracts and React app.
-*   👉 *Detailed documentation, tests outputs, and deployment hashes are in the **[Orange Belt README](./LEVEL3_ORANGE_BELT_README.md)**.*
+### 🟢 [Level 4 — Green Belt (Current Level)](./LEVEL4_GREEN_BELT_README.md)
+*   **Focus:** Production MVP, multi-worker time-locked payroll batches, dynamic token-vault contracts (XLM/USDC/CUSTOM), cryptographic income proofs verification, pilot onboarding feedbacks, and telemetry monitoring.
+*   👉 *Detailed documentation, tests outputs, and verification results are in the **[Green Belt README](./LEVEL4_GREEN_BELT_README.md)**.*
+
+### 🟠 [Level 3 — Orange Belt](./LEVEL3_ORANGE_BELT_README.md)
 
 ### 🟡 [Level 2 — Yellow Belt](./LEVEL2_YELLOW_BELT_README.md)
 *   **Focus:** Multi-wallet web application integration, Soroban smart contract deployment, and real-time events.
@@ -91,6 +88,6 @@ npm run dev
 *   ✅ **White Belt:** Wallet connection, XLM balance display, testnet classic payment submission.
 *   ✅ **Yellow Belt:** Multi-wallet client modal, Soroban Vault contract, on-chain deposits/claims, live event stream feed.
 *   ✅ **Orange Belt:** Scheduled payouts, continuous linear streams, dynamic factory vaults, CI/CD pipeline.
-*   🔜 **Green Belt:** USDC payroll support, payout splitting rules, zero-knowledge income proof schema.
+*   ✅ **Green Belt:** Multi-worker batch payrolls, dynamic multi-asset token-vault contracts (XLM/USDC), cryptographic on-chain income proofs verification, pilot onboarding feedback registry, and metrics telemetry.
 *   🔜 **Blue Belt:** 50-user pilot program for remote workers.
 *   🔜 **Black Belt:** Mainnet launch, formal smart contract audits, corporate payroll dashboards.

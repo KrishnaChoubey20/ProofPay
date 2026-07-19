@@ -671,3 +671,282 @@ export async function getAllVaultsFromFactory(
     return [];
   }
 }
+
+export async function buildCreateBatchXdr(
+  sourceAddress: string,
+  vaultId: string,
+  workers: string[],
+  amounts: string[],
+  releaseTimeSecs: number
+): Promise<string> {
+  const workersVec = StellarSdk.xdr.ScVal.scvVec(
+    workers.map((w) => StellarSdk.Address.fromString(w.trim()).toScVal())
+  );
+  const amountsVec = StellarSdk.xdr.ScVal.scvVec(
+    amounts.map((amt) => {
+      const stroops = BigInt(Math.round(parseFloat(amt) * 10_000_000));
+      return StellarSdk.nativeToScVal(stroops, { type: "i128" });
+    })
+  );
+  const releaseTimeVal = StellarSdk.nativeToScVal(BigInt(releaseTimeSecs), { type: "u64" });
+
+  return invokeContract(
+    sourceAddress,
+    vaultId,
+    "create_batch",
+    [
+      addressArg(sourceAddress),
+      workersVec,
+      amountsVec,
+      releaseTimeVal,
+    ]
+  );
+}
+
+export async function buildClaimBatchPayoutXdr(
+  sourceAddress: string,
+  vaultId: string,
+  batchId: number
+): Promise<string> {
+  const batchIdVal = StellarSdk.nativeToScVal(BigInt(batchId), { type: "u64" });
+  return invokeContract(
+    sourceAddress,
+    vaultId,
+    "claim_batch_payout",
+    [
+      addressArg(sourceAddress),
+      batchIdVal,
+    ]
+  );
+}
+
+export interface PayrollBatchUI {
+  id: bigint;
+  employer: string;
+  releaseTime: bigint;
+  totalAmount: bigint;
+  claimedCount: number;
+  workerCount: number;
+}
+
+export async function getBatch(
+  vaultId: string,
+  batchId: number,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<PayrollBatchUI | null> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        contract.call(
+          "get_batch",
+          StellarSdk.nativeToScVal(BigInt(batchId), { type: "u64" })
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val) as {
+          id: string | number | bigint;
+          employer: string;
+          release_time: string | number | bigint;
+          total_amount: string | number | bigint;
+          claimed_count: number;
+          worker_count: number;
+        } | null;
+        if (native) {
+          return {
+            id: BigInt(native.id),
+            employer: String(native.employer),
+            releaseTime: BigInt(native.release_time),
+            totalAmount: BigInt(native.total_amount),
+            claimedCount: Number(native.claimed_count),
+            workerCount: Number(native.worker_count),
+          };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getBatchWorker(
+  vaultId: string,
+  batchId: number,
+  worker: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<{ amount: bigint; claimed: boolean } | null> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        contract.call(
+          "get_batch_worker",
+          StellarSdk.nativeToScVal(BigInt(batchId), { type: "u64" }),
+          addressArg(worker)
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val) as {
+          amount: string | number | bigint;
+          claimed: boolean;
+        } | null;
+        if (native) {
+          return {
+            amount: BigInt(native.amount),
+            claimed: native.claimed,
+          };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function generateIncomeProofOnChain(
+  vaultId: string,
+  worker: string,
+  startTime: number,
+  endTime: number,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<{ amount: bigint; hash: string } | null> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        contract.call(
+          "generate_income_proof",
+          addressArg(worker),
+          StellarSdk.nativeToScVal(BigInt(startTime), { type: "u64" }),
+          StellarSdk.nativeToScVal(BigInt(endTime), { type: "u64" })
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        const native = StellarSdk.scValToNative(val);
+        if (Array.isArray(native) && native.length === 2) {
+          return {
+            amount: BigInt(native[0]),
+            hash: Buffer.from(native[1]).toString("hex"),
+          };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyIncomeProofOnChain(
+  vaultId: string,
+  worker: string,
+  startTime: number,
+  endTime: number,
+  totalAmount: string,
+  hashHex: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<boolean> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const hashBytes = Buffer.from(hashHex, "hex");
+    const hashVal = StellarSdk.xdr.ScVal.scvBytes(hashBytes);
+    const amountVal = StellarSdk.nativeToScVal(
+      BigInt(Math.round(parseFloat(totalAmount) * 10_000_000)),
+      { type: "i128" }
+    );
+
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        contract.call(
+          "verify_income_proof",
+          addressArg(worker),
+          StellarSdk.nativeToScVal(BigInt(startTime), { type: "u64" }),
+          StellarSdk.nativeToScVal(BigInt(endTime), { type: "u64" }),
+          amountVal,
+          hashVal
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        return Boolean(StellarSdk.scValToNative(val));
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export async function getVaultTokenAddress(
+  vaultId: string,
+  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
+): Promise<string | null> {
+  try {
+    const account = await rpc.getAccount(sourceAddress);
+    const contract = new StellarSdk.Contract(vaultId);
+    const tx = new StellarSdk.TransactionBuilder(account, {
+      fee: "100000",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_token_address"))
+      .setTimeout(30)
+      .build();
+
+    const simulation = await rpc.simulateTransaction(tx);
+    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
+      const success = simulation as SimulationSuccess;
+      if (success.result) {
+        const val = success.result.retval;
+        return String(StellarSdk.scValToNative(val));
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

@@ -15,6 +15,10 @@ pub enum DataKey {
     NativeToken,
     ScheduledAllocations(Address),
     Stream(Address),
+    Batch(u64),
+    BatchWorker(u64, Address),
+    NextBatchId,
+    PayoutHistory(Address),
 }
 
 // ── Error codes ───────────────────────────────────────────────────────────────
@@ -48,6 +52,31 @@ pub struct PayrollStream {
     pub start_time: u64,
     pub end_time: u64,
     pub claimed_amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PayrollBatch {
+    pub id: u64,
+    pub employer: Address,
+    pub release_time: u64,
+    pub total_amount: i128,
+    pub claimed_count: u32,
+    pub worker_count: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BatchWorkerEntry {
+    pub amount: i128,
+    pub claimed: bool,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PayoutRecord {
+    pub amount: i128,
+    pub timestamp: u64,
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -353,6 +382,9 @@ impl ProofPayVault {
             .instance()
             .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
+        // Record payout in history
+        Self::record_payout(&env, worker.clone(), allocation);
+
         // Emit event.
         PayrollClaimedEvent {
             worker: worker.clone(),
@@ -418,6 +450,9 @@ impl ProofPayVault {
             .instance()
             .set(&DataKey::TotalDeposited, &(total - total_claimable));
 
+        // Record payout in history
+        Self::record_payout(&env, worker.clone(), total_claimable);
+
         ScheduledClaimedEvent {
             worker: worker.clone(),
             amount: total_claimable,
@@ -478,6 +513,9 @@ impl ProofPayVault {
         env.storage()
             .instance()
             .set(&DataKey::TotalDeposited, &(total - claimable));
+
+        // Record payout in history
+        Self::record_payout(&env, worker.clone(), claimable);
 
         StreamClaimedEvent {
             worker: worker.clone(),
@@ -547,6 +585,251 @@ impl ProofPayVault {
         env.storage()
             .instance()
             .get(&DataKey::Admin)
+            .unwrap()
+    }
+
+    // ── create_batch ───────────────────────────────────────────────────────
+    /// Employer creates a multi-worker batch payroll with a time-lock.
+    pub fn create_batch(
+        env: Env,
+        from: Address,
+        worker_addresses: soroban_sdk::Vec<Address>,
+        worker_amounts: soroban_sdk::Vec<i128>,
+        release_time: u64,
+    ) -> Result<u64, ContractError> {
+        from.require_auth();
+
+        if worker_addresses.len() != worker_amounts.len() {
+            return Err(ContractError::InvalidAmount);
+        }
+        if worker_addresses.is_empty() {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        let mut total_amount: i128 = 0;
+        for amt in worker_amounts.iter() {
+            if amt <= 0 {
+                return Err(ContractError::InvalidAmount);
+            }
+            total_amount += amt;
+        }
+
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::NativeToken)
+            .unwrap();
+        let token_client = token::Client::new(&env, &token_addr);
+        let contract_addr = env.current_contract_address();
+        token_client.transfer(&from, &contract_addr, &total_amount);
+
+        let batch_id_key = DataKey::NextBatchId;
+        let next_id: u64 = env.storage().instance().get(&batch_id_key).unwrap_or(1);
+        env.storage().instance().set(&batch_id_key, &(next_id + 1));
+
+        let batch = PayrollBatch {
+            id: next_id,
+            employer: from.clone(),
+            release_time,
+            total_amount,
+            claimed_count: 0,
+            worker_count: worker_addresses.len(),
+        };
+        let batch_key = DataKey::Batch(next_id);
+        env.storage().persistent().set(&batch_key, &batch);
+        env.storage()
+            .persistent()
+            .extend_ttl(&batch_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        for i in 0..worker_addresses.len() {
+            let worker = worker_addresses.get(i).unwrap();
+            let amount = worker_amounts.get(i).unwrap();
+            let entry_key = DataKey::BatchWorker(next_id, worker.clone());
+            env.storage().persistent().set(
+                &entry_key,
+                &BatchWorkerEntry {
+                    amount,
+                    claimed: false,
+                },
+            );
+            env.storage()
+                .persistent()
+                .extend_ttl(&entry_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        }
+
+        let total: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalDeposited)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalDeposited, &(total + total_amount));
+
+        env.events().publish(
+            (soroban_sdk::symbol_short!("batch_cre"), from),
+            (next_id, total_amount, release_time),
+        );
+
+        Ok(next_id)
+    }
+
+    // ── claim_batch_payout ─────────────────────────────────────────────────
+    /// Worker claims their payout allocation from a released batch.
+    pub fn claim_batch_payout(
+        env: Env,
+        worker: Address,
+        batch_id: u64,
+    ) -> Result<i128, ContractError> {
+        worker.require_auth();
+
+        let batch_key = DataKey::Batch(batch_id);
+        if !env.storage().persistent().has(&batch_key) {
+            return Err(ContractError::NotInitialized);
+        }
+
+        let mut batch: PayrollBatch = env.storage().persistent().get(&batch_key).unwrap();
+
+        if env.ledger().timestamp() < batch.release_time {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        let entry_key = DataKey::BatchWorker(batch_id, worker.clone());
+        if !env.storage().persistent().has(&entry_key) {
+            return Err(ContractError::NothingToClaim);
+        }
+
+        let mut entry: BatchWorkerEntry = env.storage().persistent().get(&entry_key).unwrap();
+        if entry.claimed {
+            return Err(ContractError::NothingToClaim);
+        }
+
+        let claimable_amount = entry.amount;
+        entry.claimed = true;
+        env.storage().persistent().set(&entry_key, &entry);
+
+        batch.claimed_count += 1;
+        env.storage().persistent().set(&batch_key, &batch);
+
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::NativeToken)
+            .unwrap();
+        let token_client = token::Client::new(&env, &token_addr);
+        let contract_addr = env.current_contract_address();
+        token_client.transfer(&contract_addr, &worker, &claimable_amount);
+
+        let total: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalDeposited)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalDeposited, &(total - claimable_amount));
+
+        Self::record_payout(&env, worker.clone(), claimable_amount);
+
+        env.events().publish(
+            (soroban_sdk::symbol_short!("batch_clm"), worker),
+            (batch_id, claimable_amount),
+        );
+
+        Ok(claimable_amount)
+    }
+
+    // ── generate_income_proof ───────────────────────────────────────────────
+    /// Generates cumulative earnings and a deterministic cryptographic proof hash for a worker.
+    pub fn generate_income_proof(
+        env: Env,
+        worker: Address,
+        start_time: u64,
+        end_time: u64,
+    ) -> (i128, soroban_sdk::BytesN<32>) {
+        let key = DataKey::PayoutHistory(worker.clone());
+        let history: soroban_sdk::Vec<PayoutRecord> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+
+        let mut total_amount: i128 = 0;
+        for record in history.iter() {
+            if record.timestamp >= start_time && record.timestamp <= end_time {
+                total_amount += record.amount;
+            }
+        }
+
+        use soroban_sdk::xdr::ToXdr;
+        let val = (worker, start_time, end_time, total_amount);
+        let hash = env.crypto().sha256(&val.to_xdr(&env));
+
+        (total_amount, hash.into())
+    }
+
+    // ── verify_income_proof ─────────────────────────────────────────────────
+    /// Verifies the cryptographic proof of income on-chain.
+    pub fn verify_income_proof(
+        env: Env,
+        worker: Address,
+        start_time: u64,
+        end_time: u64,
+        total_amount: i128,
+        hash: soroban_sdk::BytesN<32>,
+    ) -> bool {
+        let (actual_amount, actual_hash) = Self::generate_income_proof(env, worker, start_time, end_time);
+        actual_amount == total_amount && actual_hash == hash
+    }
+
+    // ── record_payout (private helper) ───────────────────────────────────────
+    fn record_payout(env: &Env, worker: Address, amount: i128) {
+        let key = DataKey::PayoutHistory(worker.clone());
+        let mut history: soroban_sdk::Vec<PayoutRecord> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(env));
+
+        history.push_back(PayoutRecord {
+            amount,
+            timestamp: env.ledger().timestamp(),
+        });
+
+        env.storage().persistent().set(&key, &history);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+    }
+
+    // ── Read-only batch getter helpers ───────────────────────────────────────
+    pub fn get_batch(env: Env, batch_id: u64) -> Option<PayrollBatch> {
+        let key = DataKey::Batch(batch_id);
+        if env.storage().persistent().has(&key) {
+            Some(env.storage().persistent().get(&key).unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_batch_worker(env: Env, batch_id: u64, worker: Address) -> Option<BatchWorkerEntry> {
+        let key = DataKey::BatchWorker(batch_id, worker);
+        if env.storage().persistent().has(&key) {
+            Some(env.storage().persistent().get(&key).unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_payout_history(env: Env, worker: Address) -> soroban_sdk::Vec<PayoutRecord> {
+        let key = DataKey::PayoutHistory(worker);
+        env.storage().persistent().get(&key).unwrap_or_else(|| soroban_sdk::Vec::new(&env))
+    }
+
+    pub fn get_token_address(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::NativeToken)
             .unwrap()
     }
 }
@@ -745,5 +1028,123 @@ mod tests {
         assert_eq!(claimed3, 100i128);
         assert_eq!(token_client.balance(&worker), 500i128);
         assert_eq!(token_client.balance(&contract_id), 0i128);
+    }
+
+    #[test]
+    fn test_batch_deposit_and_claim() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let employer = Address::generate(&env);
+        let worker1 = Address::generate(&env);
+        let worker2 = Address::generate(&env);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract(token_admin.clone());
+        let token_client = token::Client::new(&env, &token_id);
+        let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+
+        token_admin_client.mint(&employer, &2000i128);
+
+        let contract_id = env.register(ProofPayVault, (&admin, &token_id));
+        let client = ProofPayVaultClient::new(&env, &contract_id);
+
+        let release_time = 1000u64;
+
+        let mut ledger_info = env.ledger().get();
+        ledger_info.timestamp = 500;
+        env.ledger().set(ledger_info);
+
+        let mut workers = soroban_sdk::Vec::new(&env);
+        workers.push_back(worker1.clone());
+        workers.push_back(worker2.clone());
+
+        let mut amounts = soroban_sdk::Vec::new(&env);
+        amounts.push_back(300i128);
+        amounts.push_back(700i128);
+
+        // Create time-locked batch payroll
+        let batch_id = client.create_batch(&employer, &workers, &amounts, &release_time);
+        assert_eq!(batch_id, 1);
+
+        assert_eq!(token_client.balance(&employer), 1000i128);
+        assert_eq!(token_client.balance(&contract_id), 1000i128);
+        assert_eq!(client.get_total_deposited(), 1000i128);
+
+        // Claiming early should fail
+        let result1 = client.try_claim_batch_payout(&worker1, &batch_id);
+        assert!(result1.is_err());
+
+        // Advance ledger beyond release time
+        let mut ledger_info = env.ledger().get();
+        ledger_info.timestamp = 1200;
+        env.ledger().set(ledger_info);
+
+        // Claim successfully
+        let claimed1 = client.claim_batch_payout(&worker1, &batch_id);
+        assert_eq!(claimed1, 300i128);
+        assert_eq!(token_client.balance(&worker1), 300i128);
+        assert_eq!(token_client.balance(&contract_id), 700i128);
+
+        // Worker 2 claims successfully
+        let claimed2 = client.claim_batch_payout(&worker2, &batch_id);
+        assert_eq!(claimed2, 700i128);
+        assert_eq!(token_client.balance(&worker2), 700i128);
+        assert_eq!(token_client.balance(&contract_id), 0i128);
+        assert_eq!(client.get_total_deposited(), 0i128);
+    }
+
+    #[test]
+    fn test_income_proof_verification() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let employer = Address::generate(&env);
+        let worker = Address::generate(&env);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract(token_admin.clone());
+        let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+
+        token_admin_client.mint(&employer, &1000i128);
+
+        let contract_id = env.register(ProofPayVault, (&admin, &token_id));
+        let client = ProofPayVaultClient::new(&env, &contract_id);
+
+        // Payout 1 (standard deposit & claim) at t=100
+        let mut ledger_info = env.ledger().get();
+        ledger_info.timestamp = 100;
+        env.ledger().set(ledger_info);
+        client.deposit(&employer, &worker, &200i128);
+        client.claim(&worker);
+
+        // Payout 2 (standard deposit & claim) at t=200
+        let mut ledger_info = env.ledger().get();
+        ledger_info.timestamp = 200;
+        env.ledger().set(ledger_info);
+        client.deposit(&employer, &worker, &300i128);
+        client.claim(&worker);
+
+        // Payout 3 (standard deposit & claim) at t=300 (outside verification window)
+        let mut ledger_info = env.ledger().get();
+        ledger_info.timestamp = 300;
+        env.ledger().set(ledger_info);
+        client.deposit(&employer, &worker, &400i128);
+        client.claim(&worker);
+
+        // Generate income proof for range t=50 to t=250
+        let (amount, hash) = client.generate_income_proof(&worker, &50u64, &250u64);
+        // Total amount claimed in that range should be Payout 1 (200) + Payout 2 (300) = 500
+        assert_eq!(amount, 500i128);
+
+        // Verify the proof
+        let is_valid = client.verify_income_proof(&worker, &50u64, &250u64, &500i128, &hash);
+        assert!(is_valid);
+
+        // Tampering with values should invalidate proof
+        let is_valid_tampered = client.verify_income_proof(&worker, &50u64, &250u64, &600i128, &hash);
+        assert!(!is_valid_tampered);
     }
 }
