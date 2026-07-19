@@ -387,28 +387,18 @@ export default function App() {
     return () => clearInterval(timer);
   }, [streamDetails]);
 
-  // Load feedback registry from localStorage or mock data
+  // Load feedback registry from localStorage
   useEffect(() => {
-    const MOCK_FEEDBACK = [
-      { address: "GA3DT5Y67MOCKPAYROLL7WORKER7RECIPIENT7NIGERIA7K", name: "Elena Rostova", role: "Worker (Ukraine)", text: "ProofPay streams make receiving my monthly salary second-by-second absolutely amazing. Low gas fees and MoneyGram off-ramp are a lifesaver!", date: "7/15/2026, 10:14 AM" },
-      { address: "GBX2K4P97MOCKPAYROLL7WORKER7RECIPIENT7KENYA7KE", name: "Chinedu Okafor", role: "Worker (Nigeria)", text: "Generating cryptographically signed income proofs allowed me to qualify for a local apartment lease without showing my entire wallet history. Highly secure!", date: "7/16/2026, 11:30 AM" },
-      { address: "GD4KA8N27MOCKPAYROLL7EMPLOYER7VAULT7OWNER7USA7", name: "Samantha Miller", role: "Employer (US Tech Corp)", text: "Managing payroll batches of 15 contractors in a single time-locked transaction has saved our finance team thousands in SWIFT wire costs.", date: "7/16/2026, 2:45 PM" },
-      { address: "GC9FL1W57MOCKPAYROLL7WORKER7RECIPIENT7INDIA7IN", name: "Ravi Kumar", role: "Worker (India)", text: "My employer set up a custom vault with USDC. It settles instantly, and I can cash out directly to my bank in minutes. Outstanding UX.", date: "7/17/2026, 9:20 AM" },
-      { address: "GAA7Z4Q87MOCKPAYROLL7WORKER7RECIPIENT7FRANCE7F", name: "Marcus Dupont", role: "Worker (France)", text: "The real-time streaming progress bar is so satisfying to watch. The web app design is smooth and responsive on mobile.", date: "7/17/2026, 4:10 PM" },
-      { address: "GDF8H6K17MOCKPAYROLL7WORKER7RECIPIENT7BRAZIL7B", name: "Carlos Ortega", role: "Worker (Brazil)", text: "ProofPay deterministic hashes work perfectly. The verifier confirmed my salary on-chain without any central server dependencies.", date: "7/18/2026, 12:05 PM" },
-      { address: "GB2KX7L37MOCKPAYROLL7WORKER7RECIPIENT7KENYA7K", name: "Amadi Bello", role: "Worker (Kenya)", text: "Love the custom dynamic vault deployment. I have full clarity on my locked milestone funds directly in the dashboard.", date: "7/18/2026, 5:50 PM" },
-      { address: "GC3RF4Y97MOCKPAYROLL7EMPLOYER7VAULT7OWNER7CHINA", name: "Li Wei", role: "Employer (SaaS Startup)", text: "Transitioning to Soroban-based smart payroll has eliminated our intermediary risks completely. This is the future of remote work.", date: "7/19/2026, 1:15 PM" },
-    ];
     const stored = localStorage.getItem("proofpay_feedback");
     if (stored) {
       try {
         setFeedbackList(JSON.parse(stored));
       } catch {
-        setFeedbackList(MOCK_FEEDBACK);
+        setFeedbackList([]);
       }
     } else {
-      setFeedbackList(MOCK_FEEDBACK);
-      localStorage.setItem("proofpay_feedback", JSON.stringify(MOCK_FEEDBACK));
+      setFeedbackList([]);
+      localStorage.setItem("proofpay_feedback", JSON.stringify([]));
     }
   }, []);
 

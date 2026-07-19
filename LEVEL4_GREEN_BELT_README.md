@@ -80,9 +80,7 @@ dist/assets/index-DimTyRBa.js   785.52 kB
 
 ## 👥 Connected Pilot Feedback Registry
 
-To validate real-world onboarding, ProofPay tracks feedback from our pilot remote workers and employers:
-
-1. **GDMU...89FE (Worker)**: "ProofPay streams make continuous payroll super smooth. Love the ticking balance UI!"
-2. **GCQY...9A1B (Employer)**: "USDC batch payments save us hundreds in wire transfer fees for our remote contractors."
-3. **GBYV...5C7D (Verifier)**: "Cryptographic proof hash verifies salary trustlessly without bank statements."
-4. **GD2P...1E9K (Worker)**: "Milestone-locked payments are excellent for freelance security."
+To validate real-world onboarding, ProofPay tracks feedback dynamically:
+* The dashboard includes an interactive **User Onboarding & Feedback Registry** form.
+* Pilot remote contractors and employers connect their Stellar wallets and submit their feedback directly.
+* Submissions are stored dynamically inside local browser storage, allowing pilot testers to register and display reviews instantly during live product demos.
