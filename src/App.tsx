@@ -1525,22 +1525,24 @@ export default function App() {
             <nav className="side-nav">
               <div style={{ padding: "0 4px 12px", borderBottom: "1px solid rgba(243,238,226,.1)" }}>
                 <label style={{ fontSize: "0.65rem", color: "rgba(243, 238, 226, 0.4)", textTransform: "uppercase", fontWeight: "bold", display: "block", marginBottom: "4px" }}>Workspace Role</label>
-                <select 
-                  value={userRole} 
-                  onChange={(e) => { 
-                    const role = e.target.value as "employer" | "worker" | "verifier";
-                    setUserRole(role); 
-                    clearErrors();
-                    if (role === "employer") setActiveSidebarView("overview");
-                    else if (role === "worker") setActiveSidebarView("claims");
-                    else if (role === "verifier") setActiveSidebarView("portal");
-                  }}
-                  style={{ width: "100%", background: "rgba(243,238,226,.06)", border: "1px solid rgba(243,238,226,.14)", color: "#fff", padding: "6px 8px", borderRadius: "8px", fontSize: "0.78rem", outline: "none", cursor: "pointer" }}
-                >
-                  <option value="employer" style={{ color: "#000" }}>💼 Employer Workspace</option>
-                  <option value="worker" style={{ color: "#000" }}>👷 Worker Dashboard</option>
-                  <option value="verifier" style={{ color: "#000" }}>🔍 Verifier Portal</option>
-                </select>
+                <div className="sidebar-select-container">
+                  <select 
+                    value={userRole} 
+                    onChange={(e) => { 
+                      const role = e.target.value as "employer" | "worker" | "verifier";
+                      setUserRole(role); 
+                      clearErrors();
+                      if (role === "employer") setActiveSidebarView("overview");
+                      else if (role === "worker") setActiveSidebarView("claims");
+                      else if (role === "verifier") setActiveSidebarView("portal");
+                    }}
+                    className="sidebar-select"
+                  >
+                    <option value="employer">💼 Employer Workspace</option>
+                    <option value="worker">👷 Worker Dashboard</option>
+                    <option value="verifier">🔍 Verifier Portal</option>
+                  </select>
+                </div>
               </div>
 
               <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "2px" }}>
