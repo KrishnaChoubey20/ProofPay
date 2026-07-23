@@ -78,6 +78,22 @@ export async function getNativeBalance(address: string) {
   }
 }
 
+export async function getUSDCBalance(address: string) {
+  try {
+    const account = await horizon.loadAccount(address);
+    const usdcBalance = account.balances.find(
+      (balance) => "asset_code" in balance && (balance as any).asset_code === "USDC"
+    );
+    return usdcBalance?.balance ?? "0";
+  } catch (error) {
+    const possibleResponse = error as { response?: { status?: number } };
+    if (possibleResponse.response?.status === 404) {
+      throw new Error("This wallet is not funded on Stellar Testnet yet.");
+    }
+    throw error;
+  }
+}
+
 export async function buildPayrollPaymentXdr({
   sourceAddress,
   destinationAddress,
@@ -91,6 +107,13 @@ export async function buildPayrollPaymentXdr({
 }) {
   validatePaymentInput(destinationAddress, amount);
   const account = await horizon.loadAccount(sourceAddress);
+  
+  // Classic USDC asset details: code = USDC, issuer = GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+  const usdcAsset = new StellarSdk.Asset(
+    "USDC",
+    "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+  );
+
   const transaction = new StellarSdk.TransactionBuilder(account, {
     fee: StellarSdk.BASE_FEE,
     networkPassphrase: NETWORK_PASSPHRASE,
@@ -99,7 +122,7 @@ export async function buildPayrollPaymentXdr({
     .addOperation(
       StellarSdk.Operation.payment({
         destination: destinationAddress.trim(),
-        asset: StellarSdk.Asset.native(),
+        asset: usdcAsset,
         amount: Number(amount).toFixed(7),
       })
     )

@@ -4,6 +4,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import {
   buildPayrollPaymentXdr,
   getNativeBalance,
+  getUSDCBalance,
   STELLAR_EXPERT_TESTNET,
   submitSignedTransaction,
   invokeContract,
@@ -140,6 +141,7 @@ function calculateLiveStreamClaimable(stream: StreamDetailsUI | null): bigint {
 export default function App() {
   const stellarWallet = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
+  const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [balanceMessage, setBalanceMessage] = useState("Fetching from Horizon…");
   
   // Tab control states
@@ -147,20 +149,16 @@ export default function App() {
   const [vaultTab, setVaultTab] = useState<"deposit" | "claim">("deposit");
   const [activeSidebarView, setActiveSidebarView] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [modalVaultOpen, setModalVaultOpen] = useState(false);
   const [modalTeamOpen, setModalTeamOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVault, setDrawerVault] = useState<any>(null);
 
   // Teammates state
-  const [teamList, setTeamList] = useState([
-    { name: "Amara Nwosu", role: "Backend engineer", rate: "1,200 XLM", vault: "Engineering — Streaming", status: "active" },
-    { name: "Diego Fuentes", role: "Frontend engineer", rate: "1,100 XLM", vault: "Engineering — Streaming", status: "active" },
-    { name: "Lin Wei", role: "Product designer", rate: "950 XLM", vault: "Design — Streaming", status: "active" },
-    { name: "Priya Raman", role: "Product designer", rate: "900 XLM", vault: "Design — Streaming", status: "active" },
-    { name: "Tomás Silva", role: "Smart contract engineer", rate: "1,400 XLM", vault: "Engineering — Streaming", status: "active" },
-    { name: "Kwame Boateng", role: "Contractor — audit", rate: "2,000 USDC", vault: "Contractors — Scheduled", status: "active" },
-  ]);
+  const [teamList, setTeamList] = useState<{ name: string; role: string; rate: string; vault: string; status: string }[]>([]);
 
   // Dynamic Vault states
   const [customVaultId, setCustomVaultId] = useState<string | null>(null);
@@ -204,7 +202,7 @@ export default function App() {
 
   // Level 4 Role & Asset Selection States
   const [userRole, setUserRole] = useState<"employer" | "worker" | "verifier">("employer");
-  const [deployedTokenType, setDeployedTokenType] = useState<"XLM" | "USDC" | "CUSTOM">("XLM");
+  const [deployedTokenType, setDeployedTokenType] = useState<"XLM" | "USDC" | "CUSTOM">("USDC");
   const [customTokenSAC, setCustomTokenSAC] = useState("");
 
   // Level 4 Batch Payroll States
@@ -236,12 +234,15 @@ export default function App() {
   const [feedbackRole, setFeedbackRole] = useState("Worker");
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackList, setFeedbackList] = useState<{ address: string; name: string; role: string; text: string; date: string }[]>([]);
-  const [vaultTokenSymbol, setVaultTokenSymbol] = useState("XLM");
+  const [vaultTokenSymbol, setVaultTokenSymbol] = useState("USDC");
   const [vaultTokenAddress, setVaultTokenAddress] = useState("");
 
   // Live Activity Feed state
   const [activityFeed, setActivityFeed] = useState<VaultEvent[]>([]);
   const [isStreamingEvents, setIsStreamingEvents] = useState(false);
+
+  // Landing page live seal counter (simulated streaming pay rate for the hero)
+  const [sealAmount, setSealAmount] = useState(812.4);
 
   const walletReady = Boolean(stellarWallet.connected && stellarWallet.address);
   const activeError = localError || stellarWallet.error;
@@ -334,12 +335,18 @@ export default function App() {
     }
   }, [stellarWallet.address]);
 
-  // Load native balance
+  // Load native and USDC balances
   const loadBalance = useCallback(async () => {
     if (!stellarWallet.address) return;
     try {
       const nextBalance = await getNativeBalance(stellarWallet.address);
       setBalance(nextBalance);
+      try {
+        const nextUSDC = await getUSDCBalance(stellarWallet.address);
+        setUsdcBalance(nextUSDC);
+      } catch (e) {
+        setUsdcBalance("0");
+      }
       setBalanceMessage("Updated from Testnet Horizon");
     } catch (error) {
       const err = error as { response?: { status?: number } };
@@ -348,6 +355,7 @@ export default function App() {
           ? "Account not funded on Testnet yet. Use Friendbot."
           : friendlyErr(error);
       setBalance(null);
+      setUsdcBalance(null);
       setBalanceMessage(msg);
     }
   }, [stellarWallet.address]);
@@ -368,7 +376,7 @@ export default function App() {
           setVaultTokenSymbol(tokAddr.slice(0, 4) + "…" + tokAddr.slice(-4));
         }
       } else {
-        setVaultTokenSymbol("XLM");
+        setVaultTokenSymbol("USDC");
         setVaultTokenAddress("");
       }
 
@@ -450,6 +458,16 @@ export default function App() {
       localStorage.setItem("proofpay_feedback", JSON.stringify([]));
     }
   }, []);
+
+  // Landing hero seal: tick up the streaming pay rate while wallet is not connected
+  useEffect(() => {
+    if (walletReady) return;
+    const rate = 1.2 / 60; // XLM per second
+    const timer = setInterval(() => {
+      setSealAmount((prev) => prev + rate);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [walletReady]);
 
   const submitFeedback = (e: FormEvent) => {
     e.preventDefault();
@@ -949,7 +967,7 @@ export default function App() {
       setTxStatus({
         type: "error",
         title: "Invalid amount",
-        message: "Enter an XLM amount greater than 0.",
+        message: "Enter an amount greater than 0.",
       });
       return;
     }
@@ -1060,7 +1078,7 @@ export default function App() {
       setVaultTxStatus({
         type: "error",
         title: "Invalid amount",
-        message: "Enter an XLM amount greater than 0.",
+        message: "Enter an amount greater than 0.",
       });
       return;
     }
@@ -1137,7 +1155,7 @@ export default function App() {
       setVaultTxStatus({
         type: "success",
         title: "Vault deposit success!",
-        message: `${vaultAmount} XLM has been deposited in the vault (${depositType}) for ${shorten(trimmedWorker, 6, 6)}.`,
+        message: `${vaultAmount} ${vaultTokenSymbol} has been deposited in the vault (${depositType}) for ${shorten(trimmedWorker, 6, 6)}.`,
         hash: result.hash,
         ledger: result.ledger,
       });
@@ -1334,176 +1352,224 @@ export default function App() {
   };
   const sparklinePoints = "10 150 Q 80 120 150 100 T 290 50 T 370 20";
 
-  // Resolved list of vaults
+  // Only show real on-chain vaults — no fake/demo data
   const activeVaultsData = [
     { id: vaultId, name: useCustomVault ? "My Deployed Vault" : "Default ProofPay Vault", type: "Streaming", asset: vaultTokenSymbol, balance: Number(stroopsToXlm(vaultTotal)), status: "active", rate: 1.2, workers: myAvailableVaults.length || 1 },
-    { id: "VAULT-007", name: "Design payroll", type: "Streaming", asset: "XLM", balance: 9210.0, status: "active", rate: 0.6, workers: 2 },
-    { id: "VAULT-011", name: "Contractors — Q3", type: "Scheduled", asset: "USDC", balance: 6500.0, status: "locked", rate: 0.0, workers: 3 },
-    { id: "VAULT-013", name: "Founders vesting", type: "Scheduled", asset: "XLM", balance: 12000.0, status: "locked", rate: 0.0, workers: 2 },
-    { id: "VAULT-009", name: "Support payroll", type: "Streaming", asset: "USDC", balance: 689.5, status: "paused", rate: 0.35, workers: 1 },
   ];
 
   return (
     <>
       {/* ══ LANDING PAGE ══ */}
       {!walletReady && (
-        <div id="view-landing">
-          <nav>
+        <div id="view-landing" className="ppl">
+          <nav className="ppl-nav">
             <div className="container nav-inner">
-              <div className="logo" onClick={goHome}>
-                <div className="logo-mark">
-                  <svg width="20" height="20" viewBox="0 0 96 96" fill="none">
-                    <path d="M18 57C18 43 29 33 42 33H66" stroke="#56D6A7" strokeWidth="9" strokeLinecap="round" />
-                    <path d="M67 39C67 53 56 63 43 63H19" stroke="#6CA7FF" strokeWidth="9" strokeLinecap="round" />
-                    <circle cx="46" cy="48" r="9" fill="#F7C948" />
-                  </svg>
-                </div>
-                <span className="logo-name">ProofPay</span>
+              <a className="ppl-logo" onClick={goHome} style={{ cursor: "pointer" }}>
+                <svg className="ppl-logo-mark" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#14110D"/><path d="M9 21V11h6.2c2.4 0 4 1.5 4 3.7 0 2.2-1.6 3.7-4 3.7H12v2.6H9zm3-5.1h2.9c1 0 1.7-.6 1.7-1.6s-.7-1.6-1.7-1.6H12v3.2z" fill="#F3EEE2"/></svg>
+                <span className="ppl-logo-name">ProofPay</span>
+              </a>
+              <div className="ppl-nav-links">
+                <a href="#vaults">Vaults</a>
+                <a href="#features">Product</a>
+                <a href="#proofs">Proofs</a>
+                <a href="#tech">Network</a>
               </div>
-              <div className="nav-right">
-                <button id="btn-connect" onClick={connectWallet} disabled={sending}>
-                  {sending ? <span className="spin">↻</span> : "Connect Wallet"}
+              <div className="ppl-nav-right">
+                <span className="ppl-net-chip">● Stellar Testnet</span>
+                <button className="ppl-btn ppl-btn-primary ppl-btn-sm" onClick={connectWallet} disabled={sending}>
+                  {sending ? "Connecting…" : "Connect wallet"}
                 </button>
               </div>
             </div>
           </nav>
 
-          <header className="hero">
-            <div className="container hero-inner">
+          <header className="ppl-hero" id="top">
+            <div className="container ppl-hero-grid">
               <div>
-                <div className="hero-badge">
-                  <span className="dot"></span>
-                  <span>Stellar Testnet Pilot</span>
-                </div>
-                <h1 className="display">
-                  Decentralized payroll that <em>streams</em> second by second.
-                </h1>
-                <p className="hero-sub">
-                  Secure on-chain vaults, scheduled lockups, and privacy-preserving salary verification built on Stellar & Soroban.
-                </p>
-                <div className="hero-actions">
-                  <button className="btn-primary" onClick={connectWallet} disabled={sending}>
-                    Launch Dashboard →
+                <span className="ppl-eyebrow">Soroban vaults · non-custodial payroll</span>
+                <h1 className="ppl-display ppl-hero-title">Payroll that moves <em>by the second.</em><br />Proof that never spills a name.</h1>
+                <p className="ppl-lede">ProofPay runs payroll through on-chain vaults on Stellar — scheduled, streaming or batched — so a worker in Lagos and an employer in Lisbon can settle without a bank in the middle, and prove their income without handing over a statement.</p>
+                <div className="ppl-hero-ctas">
+                  <button className="ppl-btn ppl-btn-primary" onClick={connectWallet} disabled={sending}>
+                    {sending ? "Connecting…" : "Connect wallet"}
                   </button>
-                  <a href="#how-it-works" className="btn-outline">How it works</a>
+                  <a className="ppl-btn ppl-btn-ghost" href="#vaults">See how a vault works</a>
+                </div>
+                <div className="ppl-trust-row">
+                  <span className="ppl-trust-chip">Non-interactive claims</span>
+                  <span className="ppl-trust-chip">USDC vaults</span>
+                  <span className="ppl-trust-chip">Dynamic vault factory</span>
+                  <span className="ppl-trust-chip">Income proofs (roadmap)</span>
                 </div>
               </div>
-              <div className="hero-card">
-                <div className="card-header">
-                  <span className="card-title">Live Vault Status</span>
-                  <div className="status-chip connected">
-                    <span className="dot"></span>
-                    Ready
+
+              <div className="ppl-seal-wrap">
+                <div className="ppl-seal">
+                  <svg viewBox="0 0 400 400">
+                    <circle cx="200" cy="200" r="188" fill="none" stroke="#14110D" strokeOpacity="0.1" strokeWidth="1"/>
+                    <circle cx="200" cy="200" r="150" fill="none" stroke="#1F4D3D" strokeOpacity="0.18" strokeWidth="1"/>
+                    <g className="ppl-ring-rotate">
+                      <defs><path id="ringpath" d="M 200,200 m -172,0 a 172,172 0 1,1 344,0 a 172,172 0 1,1 -344,0"/></defs>
+                      <text fontFamily="IBM Plex Mono, monospace" fontSize="10.5" letterSpacing="3" fill="#A8792A">
+                        <textPath href="#ringpath" startOffset="0%">
+                          VAULT · 004 · ENGINEERING · SOROBAN TESTNET · STREAMING · VAULT · 004 · ENGINEERING · SOROBAN TESTNET · STREAMING ·
+                        </textPath>
+                      </text>
+                    </g>
+                    <circle cx="200" cy="200" r="120" fill="#F3EEE2" stroke="#14110D" strokeWidth="1.5"/>
+                  </svg>
+                  <div className="ppl-seal-center">
+                    <div className="ppl-seal-num">{sealAmount.toFixed(3)}<small>USDC</small></div>
+                    <div className="ppl-seal-status">Streaming now</div>
                   </div>
                 </div>
-                <div className="balance-block">
-                  <div className="balance-label">Total Value Locked</div>
-                  <div className="balance-amount">
-                    48,920<span className="balance-unit">XLM</span>
-                  </div>
-                </div>
-                <div style={{ marginTop: "14px" }}>
-                  <div className="tx-row">
-                    <div className="tx-info">
-                      <div className="tx-icon">💸</div>
-                      <div>
-                        <div className="tx-label">Salary Stream</div>
-                        <div className="tx-sub">Engineering Vault</div>
-                      </div>
-                    </div>
-                    <div className="tx-amt">+1.20 XLM/m</div>
-                  </div>
-                  <div className="tx-row">
-                    <div className="tx-info">
-                      <div className="tx-icon">🔒</div>
-                      <div>
-                        <div className="tx-label">Contractor Q3</div>
-                        <div className="tx-sub">Time Locked</div>
-                      </div>
-                    </div>
-                    <div className="tx-amt">6,500 USDC</div>
-                  </div>
-                </div>
+                <div className="ppl-seal-caption">Live pay rate for one engineering vault — 1.2 USDC / minute, claimable any time.</div>
               </div>
             </div>
           </header>
 
-          <section className="features-section">
+          <div className="ppl-ticker-band">
+            <div className="ppl-ticker-track">
+              {[...Array(2)].map((_, dup) => (
+                [
+                  "DEPOSIT · VAULT#004 · +1,200.000 USDC",
+                  "CLAIM · GA3F…92XQ · 84.220 USDC",
+                  "FACTORY · NEW VAULT DEPLOYED · VAULT#011",
+                  "STREAM · ENGINEERING · 1.2 USDC/min",
+                  "CLAIM · GBOP…44LK · 212.900 USDC",
+                  "PROOF · CERTIFICATE #0417 · ISSUED",
+                ].map((t, i) => <span key={`${dup}-${i}`}>{t}</span>)
+              ))}
+            </div>
+          </div>
+
+          <section className="ppl-section" id="vaults">
             <div className="container">
-              <h2 className="section-title">Platform Features</h2>
-              <p className="section-subtitle">Advanced payment streaming and secure smart contract capabilities built on Soroban.</p>
-              
-              <div className="features-grid">
-                <div className="feature-card">
-                  <div className="feature-icon">🏗️</div>
-                  <h3>Dynamic Factory Pattern</h3>
-                  <p>Deploy your own dedicated, isolated payroll vault contract on-chain in one click. Fully customizable and secure.</p>
+              <div className="ppl-sec-head">
+                <span className="ppl-eyebrow">Three ways a vault can pay</span>
+                <h2 className="ppl-display">Pick the rhythm, not just the rate.</h2>
+                <p>Every company gets its own isolated vault, deployed by the factory on demand. What differs is how money leaves it.</p>
+              </div>
+              <div className="ppl-vault-types">
+                <div className="ppl-vault-card">
+                  <span className="ppl-vault-tag">Scheduled</span>
+                  <h3 className="ppl-display">Lock it, release it on a date.</h3>
+                  <p>Set aside a lump sum that unlocks at a specific time. Built for contractor milestones, sign-on bonuses and cliff vesting, where the whole point is that nothing moves early.</p>
                 </div>
-                <div className="feature-card">
-                  <div className="feature-icon">⏱️</div>
-                  <h3>Scheduled Time-Locks</h3>
-                  <p>Lock funds mathematically until specific release times. Perfect for milestones, bonuses, and vesting schedules.</p>
+                <div className="ppl-vault-card">
+                  <span className="ppl-vault-tag">Streaming</span>
+                  <h3 className="ppl-display">Pay out linearly, second by second.</h3>
+                  <p>A continuous rate accrues in the vault and a worker can claim whatever has vested at any moment — no waiting on a monthly cycle for money already earned.</p>
                 </div>
-                <div className="feature-card">
-                  <div className="feature-icon">🌊</div>
-                  <h3>Continuous Live Streams</h3>
-                  <p>Stream salaries continuously second-by-second. Workers can claim accrued amounts anytime, and see their balances tick up in real time.</p>
-                </div>
-                <div className="feature-card">
-                  <div className="feature-icon">🛡️</div>
-                  <h3>On-Chain Security</h3>
-                  <p>Zero intermediary risk. Funds are stored in non-interactive smart vaults on the Stellar Testnet governed by Soroban SAC.</p>
+                <div className="ppl-vault-card">
+                  <span className="ppl-vault-tag">Batch</span>
+                  <h3 className="ppl-display">One run, a whole team claims.</h3>
+                  <p>Load a multi-worker payroll in a single transaction. Every teammate claims their own allocation with their own wallet — the employer never touches anyone's keys.</p>
                 </div>
               </div>
             </div>
           </section>
 
-          <section className="process-section" id="how-it-works">
+          <section className="ppl-section" id="features">
             <div className="container">
-              <h2 className="section-title">How It Works</h2>
-              <p className="section-subtitle">Set up and claim automated payroll in four simple steps.</p>
-              
-              <div className="process-steps">
-                <div className="process-step">
-                  <div className="step-num">1</div>
-                  <h3>Connect Wallet</h3>
-                  <p>Connect your Freighter or other Stellar wallet loaded with Testnet XLM to begin.</p>
+              <div className="ppl-sec-head">
+                <span className="ppl-eyebrow">Built for teams that don't share a border</span>
+                <h2 className="ppl-display">The parts that make it trustworthy.</h2>
+              </div>
+              <div className="ppl-feat-grid">
+                <div className="ppl-feat">
+                  <div className="ppl-feat-num">FACTORY</div>
+                  <h4>Dynamic vault factory</h4>
+                  <p>Each company's vault is deployed on demand from a Soroban factory contract — isolated funds, never a shared pool.</p>
                 </div>
-                <div className="process-step">
-                  <div className="step-num">2</div>
-                  <h3>Deploy Vault</h3>
-                  <p>Spin up your custom payroll vault using our dynamic Factory contract to hold your payroll assets.</p>
+                <div className="ppl-feat">
+                  <div className="ppl-feat-num">CUSTODY</div>
+                  <h4>Non-interactive claims</h4>
+                  <p>Workers claim with their own wallet signature. The employer funds the vault and never sees a private key.</p>
                 </div>
-                <div className="process-step">
-                  <div className="step-num">3</div>
-                  <h3>Fund/Stream</h3>
-                  <p>Deposit funds into instant, scheduled release, or real-time continuous streaming payroll contracts.</p>
+                <div className="ppl-feat">
+                  <div className="ppl-feat-num">ASSETS</div>
+                  <h4>USDC Vaults</h4>
+                  <p>Fund a vault in USDC and let workers claim their allocations continuously and securely.</p>
                 </div>
-                <div className="process-step">
-                  <div className="step-num">4</div>
-                  <h3>Claim Instantly</h3>
-                  <p>Workers can connect their wallet and claim all unlocked, accrued, or streamed funds at any time.</p>
+                <div className="ppl-feat">
+                  <div className="ppl-feat-num">PRIVACY</div>
+                  <h4>Selective income proofs</h4>
+                  <p>Generate a cryptographic proof of a pay history for a landlord or visa office — without exposing every transaction.</p>
                 </div>
               </div>
             </div>
           </section>
 
-          <footer className="landing-footer">
+          <section className="ppl-section" id="proofs">
+            <div className="container ppl-proof-wrap">
+              <div className="ppl-proof-copy">
+                <span className="ppl-eyebrow">The paperwork, without the paperwork</span>
+                <h2 className="ppl-display" style={{ fontSize: "clamp(1.8rem,3vw,2.4rem)", margin: "16px 0" }}>One statement, verifiable on-chain.</h2>
+                <p>Instead of exporting a bank statement, a worker generates a signed certificate straight from their claim history — a landlord or embassy can check it against the ledger in seconds.</p>
+                <ul className="ppl-proof-list">
+                  <li>Chooses a date range and an asset to summarize.</li>
+                  <li>ProofPay reads only confirmed claims from that worker's vault.</li>
+                  <li>The certificate carries a hash that anyone can verify against the chain, without ever pulling the raw transaction history.</li>
+                </ul>
+              </div>
+              <div className="ppl-certificate">
+                <div className="ppl-cert-top">
+                  <div>
+                    <span className="ppl-eyebrow">Income verification</span>
+                    <div className="ppl-display" style={{ fontSize: "1.3rem", marginTop: "8px" }}>Certificate #0417</div>
+                  </div>
+                  <div className="ppl-stamp">verified<br />on-chain</div>
+                </div>
+                <div className="ppl-cert-row"><span>Worker</span><span>GA3F…92XQ</span></div>
+                <div className="ppl-cert-row"><span>Period</span><span>01 Apr – 30 Jun 2026</span></div>
+                <div className="ppl-cert-row"><span>Verified amount</span><span>4,820.500 USDC</span></div>
+                <div className="ppl-cert-row"><span>Vault</span><span>CDHJ…NPJQ</span></div>
+                <div className="ppl-cert-hash">proof · bdb16cfa3ed2ad68721dd96d6657f68e1880d92439ea788281b02a2966f445f4</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="ppl-section" id="tech">
             <div className="container">
-              <div className="footer-inner">
-                <div className="footer-brand">
-                  <h3>💳 ProofPay</h3>
-                  <p>Privacy-Preserving Payroll & Dynamic On-Chain Vaults on Stellar.</p>
+              <div className="ppl-tech-strip">
+                <div>
+                  <span className="ppl-eyebrow" style={{ color: "#A8792A" }}>On testnet today</span>
+                  <h3 className="ppl-display">Real contracts, not a mockup.</h3>
+                  <p>ProofPay's factory and vault contracts are live on Stellar Testnet right now, deployed with Soroban SDK v25.3.1.</p>
                 </div>
-                <div className="footer-links">
-                  <a href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">GitHub Repository</a>
-                  <a href="https://stellar.org" target="_blank" rel="noreferrer">Built on Stellar</a>
-                  <a href="https://proofpay-brown.vercel.app/" target="_blank" rel="noreferrer">Live App</a>
+                <div className="ppl-tech-rows">
+                  <div className="ppl-tech-row"><span>Network</span><span>Stellar · Testnet</span></div>
+                  <div className="ppl-tech-row"><span>Factory contract</span><span>{shorten(FACTORY_CONTRACT_ID, 8, 12)}</span></div>
+                  <div className="ppl-tech-row"><span>Default vault</span><span>{shorten(VAULT_CONTRACT_ID, 8, 12)}</span></div>
+                  <div className="ppl-tech-row"><span>Wallets supported</span><span>Freighter · xBull · Albedo</span></div>
                 </div>
               </div>
-              <div className="footer-bottom">
-                <p>&copy; {new Date().getFullYear()} ProofPay. Powered by Soroban Smart Contracts. All rights reserved.</p>
+            </div>
+          </section>
+
+          <section className="ppl-cta-band">
+            <div className="container">
+              <span className="ppl-eyebrow" style={{ justifyContent: "center" }}>Set up in minutes</span>
+              <h2 className="ppl-display">Start a vault before your coffee goes cold.</h2>
+              <button className="ppl-btn ppl-btn-primary" onClick={connectWallet} disabled={sending}>
+                {sending ? "Connecting…" : "Connect wallet"}
+              </button>
+            </div>
+          </section>
+
+          <footer className="ppl-footer">
+            <div className="container ppl-foot-inner">
+              <a className="ppl-logo" onClick={goHome} style={{ cursor: "pointer" }}>
+                <svg className="ppl-logo-mark" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#14110D"/><path d="M9 21V11h6.2c2.4 0 4 1.5 4 3.7 0 2.2-1.6 3.7-4 3.7H12v2.6H9zm3-5.1h2.9c1 0 1.7-.6 1.7-1.6s-.7-1.6-1.7-1.6H12v3.2z" fill="#F3EEE2"/></svg>
+                <span className="ppl-logo-name">ProofPay</span>
+              </a>
+              <div className="ppl-foot-links">
+                <a href="#vaults">Vaults</a>
+                <a href="#proofs">Proofs</a>
+                <a href="https://github.com/KrishnaChoubey20/ProofPay" target="_blank" rel="noreferrer">GitHub</a>
               </div>
+              <span style={{ fontSize: ".8rem", color: "var(--ink-mute)" }}>Built on Stellar · Soroban testnet demo</span>
             </div>
           </footer>
         </div>
@@ -1524,24 +1590,64 @@ export default function App() {
             {/* Dynamic context navigation links based on userRole */}
             <nav className="side-nav">
               <div style={{ padding: "0 4px 12px", borderBottom: "1px solid rgba(243,238,226,.1)" }}>
-                <label style={{ fontSize: "0.65rem", color: "rgba(243, 238, 226, 0.4)", textTransform: "uppercase", fontWeight: "bold", display: "block", marginBottom: "4px" }}>Workspace Role</label>
-                <div className="sidebar-select-container">
-                  <select 
-                    value={userRole} 
-                    onChange={(e) => { 
-                      const role = e.target.value as "employer" | "worker" | "verifier";
-                      setUserRole(role); 
-                      clearErrors();
-                      if (role === "employer") setActiveSidebarView("overview");
-                      else if (role === "worker") setActiveSidebarView("claims");
-                      else if (role === "verifier") setActiveSidebarView("portal");
-                    }}
-                    className="sidebar-select"
+                <label style={{ fontSize: "0.65rem", color: "rgba(243, 238, 226, 0.4)", textTransform: "uppercase", fontWeight: "bold", display: "block", marginBottom: "6px", letterSpacing: "0.1em" }}>Workspace Role</label>
+
+                {/* Custom role dropdown */}
+                <div style={{ position: "relative" }}>
+                  {roleMenuOpen && (
+                    <>
+                      <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onClick={() => setRoleMenuOpen(false)} />
+                      <div className="role-dropdown">
+                        {([
+                          { value: "employer", icon: "💼", label: "Employer Workspace" },
+                          { value: "worker",   icon: "👷", label: "Worker Dashboard" },
+                          { value: "verifier", icon: "🔍", label: "Verifier Portal" },
+                        ] as const).map((opt) => (
+                          <button
+                            key={opt.value}
+                            className={`role-opt${userRole === opt.value ? " active" : ""}`}
+                            onClick={() => {
+                              setUserRole(opt.value);
+                              clearErrors();
+                              setRoleMenuOpen(false);
+                              if (opt.value === "employer") setActiveSidebarView("overview");
+                              else if (opt.value === "worker") setActiveSidebarView("claims");
+                              else if (opt.value === "verifier") setActiveSidebarView("portal");
+                            }}
+                          >
+                            <span className="role-opt-icon">{opt.icon}</span>
+                            <span>{opt.label}</span>
+                            {userRole === opt.value && (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: "auto" }}>
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Trigger button */}
+                  <button
+                    className={`role-trigger${roleMenuOpen ? " open" : ""}`}
+                    onClick={() => setRoleMenuOpen(!roleMenuOpen)}
+                    aria-expanded={roleMenuOpen}
                   >
-                    <option value="employer">💼 Employer Workspace</option>
-                    <option value="worker">👷 Worker Dashboard</option>
-                    <option value="verifier">🔍 Verifier Portal</option>
-                  </select>
+                    <span className="role-trigger-icon">
+                      {userRole === "employer" ? "💼" : userRole === "worker" ? "👷" : "🔍"}
+                    </span>
+                    <span style={{ flex: 1, textAlign: "left" }}>
+                      {userRole === "employer" ? "Employer Workspace" : userRole === "worker" ? "Worker Dashboard" : "Verifier Portal"}
+                    </span>
+                    <svg
+                      width="11" height="11" viewBox="0 0 24 24" fill="none"
+                      stroke="rgba(243,238,226,0.45)" strokeWidth="2.2"
+                      style={{ flex: "none", transition: "transform 0.2s ease", transform: roleMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                    >
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
 
@@ -1595,14 +1701,106 @@ export default function App() {
             </nav>
 
             <div className="side-foot">
-              <a href="#" onClick={(e) => { e.preventDefault(); disconnectWallet(); }} style={{ display: "block", fontSize: "0.76rem", color: "rgba(243,238,226,.5)", marginBottom: "12px" }}>
-                ← Leave Dashboard
-              </a>
-              <div className="wallet-pill">
-                <span className="wallet-dot"></span>
-                <div className="wallet-meta">
-                  <span className="wallet-addr">{shorten(stellarWallet.address, 4, 4)}</span>
-                  <span className="wallet-net">Stellar · Testnet</span>
+              {/* Custom wallet dropdown */}
+              <div className="wallet-menu-wrap" style={{ position: "relative" }}>
+                {/* Dropdown panel — shown above the pill */}
+                {walletMenuOpen && (
+                  <>
+                    {/* Backdrop to close on outside click */}
+                    <div
+                      style={{ position: "fixed", inset: 0, zIndex: 299 }}
+                      onClick={() => setWalletMenuOpen(false)}
+                    />
+                    <div className="wallet-dropdown">
+                      {/* Address row */}
+                      <div className="wdrop-addr-row">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                        </svg>
+                        <span>{shorten(stellarWallet.address, 6, 6)}</span>
+                      </div>
+                      <div className="wdrop-divider"/>
+                      
+                      {/* Balances details */}
+                      <div style={{ padding: "8px 14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                          <span style={{ color: "rgba(243, 238, 226, 0.45)" }}>USDC Balance:</span>
+                          <span style={{ color: "var(--paper)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                            {usdcBalance !== null ? `${Number(usdcBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })}` : "—"}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                          <span style={{ color: "rgba(243, 238, 226, 0.45)" }}>XLM Balance:</span>
+                          <span style={{ color: "rgba(243, 238, 226, 0.75)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                            {balance !== null ? `${Number(balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}` : "—"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="wdrop-divider"/>
+
+                      {/* Copy button */}
+                      <button
+                        className="wdrop-btn"
+                        onClick={() => {
+                          navigator.clipboard.writeText(stellarWallet.address ?? "");
+                          setAddressCopied(true);
+                          setTimeout(() => setAddressCopied(false), 2000);
+                        }}
+                      >
+                        {addressCopied ? (
+                          <>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7FBE9A" strokeWidth="2">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            <span style={{ color: "#7FBE9A" }}>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                            </svg>
+                            <span>Copy Address</span>
+                          </>
+                        )}
+                      </button>
+                      {/* Disconnect button */}
+                      <button
+                        className="wdrop-btn wdrop-btn-danger"
+                        onClick={() => { setWalletMenuOpen(false); disconnectWallet(); }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                        <span>Disconnect Wallet</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Trigger pill */}
+                <div
+                  className={`wallet-pill${walletMenuOpen ? " open" : ""}`}
+                  onClick={() => setWalletMenuOpen(!walletMenuOpen)}
+                  role="button"
+                  aria-expanded={walletMenuOpen}
+                >
+                  <span className="wallet-dot"></span>
+                  <div className="wallet-meta" style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+                      <span className="wallet-addr">{shorten(stellarWallet.address, 4, 4)}</span>
+                      <span style={{ fontSize: "0.74rem", color: "var(--paper)", opacity: 0.85, fontWeight: "bold", fontFamily: "'IBM Plex Mono', monospace" }}>
+                        {usdcBalance !== null ? `${Number(usdcBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC` : "— USDC"}
+                      </span>
+                    </div>
+                    <span className="wallet-net">Stellar · Testnet</span>
+                  </div>
+                  <svg
+                    width="11" height="11" viewBox="0 0 24 24" fill="none"
+                    stroke="rgba(243,238,226,0.45)" strokeWidth="2.2"
+                    style={{ flex: "none", transition: "transform 0.2s ease", transform: walletMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                  >
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
                 </div>
               </div>
             </div>
@@ -1611,7 +1809,7 @@ export default function App() {
           <div className="main-workspace">
             <div className="topbar">
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <button className="btn-ghost btn btn-sm" onClick={() => setSidebarOpen(!sidebarOpen)} style={{ display: "inline-flex" }}>☰</button>
+                <button className="menu-toggle btn-ghost btn btn-sm" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
                 <div>
                   <h1 style={{ textTransform: "capitalize" }}>
                     {activeSidebarView === "batch" ? "Batch Payroll Builder" : activeSidebarView}
@@ -1823,27 +2021,39 @@ export default function App() {
 
                   <div style={{ marginTop: "28px" }}>
                     <h3 style={{ fontFamily: "Fraunces, serif", fontSize: "1.15rem", marginBottom: "16px" }}>Active Vault Registries</h3>
-                    <div className="vault-grid">
-                      {activeVaultsData.map((v, idx) => (
-                        <div className="vcard" key={idx} onClick={() => { setDrawerVault(v); setDrawerOpen(true); }}>
-                          <div className="vcard-top">
-                            <span className="vcard-type">{v.type}</span>
-                            <span className={`pill ${v.status}`}>{v.status}</span>
+                    {!useCustomVault && Number(stroopsToXlm(vaultTotal)) === 0 ? (
+                      <div className="team-empty-state" style={{ border: "1.5px dashed var(--paper-line-strong)", borderRadius: "14px", padding: "40px 24px" }}>
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                          <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20M9 21V9"/>
+                        </svg>
+                        <div className="team-empty-title">No vaults deployed yet</div>
+                        <div className="team-empty-sub">Click "+ Deploy Vault" above to create your first USDC payroll vault on Stellar Testnet.</div>
+                        <button className="btn btn-primary btn-sm" onClick={() => setModalVaultOpen(true)}>Deploy your first vault</button>
+                      </div>
+                    ) : (
+                      <div className="vault-grid">
+                        {activeVaultsData.map((v, idx) => (
+                          <div className="vcard" key={idx} onClick={() => { setDrawerVault(v); setDrawerOpen(true); }}>
+                            <div className="vcard-top">
+                              <span className="vcard-type">{v.type}</span>
+                              <span className={`pill ${v.status}`}>{v.status}</span>
+                            </div>
+                            <h4>{v.name}</h4>
+                            <div className="id mono">{shorten(v.id, 8, 8)}</div>
+                            <div className="bal">
+                              {v.balance.toLocaleString()}
+                              <small>{v.asset}</small>
+                            </div>
+                            <div className="vcard-foot">
+                              <span style={{ fontSize: "0.76rem", color: "var(--ink-muted)" }}>{v.workers} worker(s) allocated</span>
+                              <span style={{ fontSize: "0.76rem", color: "var(--vault-deep)", fontWeight: 600 }}>Open →</span>
+                            </div>
                           </div>
-                          <h4>{v.name}</h4>
-                          <div className="id mono">{shorten(v.id, 8, 8)}</div>
-                          <div className="bal">
-                            {v.balance.toLocaleString()}
-                            <small>{v.asset}</small>
-                          </div>
-                          <div className="vcard-foot">
-                            <span style={{ fontSize: "0.76rem", color: "var(--ink-muted)" }}>{v.workers} worker(s) allocated</span>
-                            <span style={{ fontSize: "0.76rem", color: "var(--vault-deep)", fontWeight: 600 }}>Open →</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
                 </div>
               )}
 
@@ -1857,30 +2067,63 @@ export default function App() {
                         + Add Teammate
                       </button>
                     </div>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>Role</th>
-                          <th>Allocation Rate</th>
-                          <th>Asset Code</th>
-                          <th>Target Vault</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {teamList.map((t, idx) => (
-                          <tr key={idx}>
-                            <td><strong>{t.name}</strong></td>
-                            <td>{t.role}</td>
-                            <td className="mono">{t.rate}</td>
-                            <td className="mono">{t.rate.split(" ")[1] || "XLM"}</td>
-                            <td>{t.vault}</td>
-                            <td><span className="pill active">{t.status}</span></td>
+
+                    {teamList.length === 0 ? (
+                      <div className="team-empty-state">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                          <circle cx="9" cy="8" r="3"/>
+                          <path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/>
+                          <circle cx="17" cy="7" r="2.4"/>
+                          <path d="M22 21c0-2.9-1.8-5.3-4.4-6.3"/>
+                        </svg>
+                        <div className="team-empty-title">No teammates added yet</div>
+                        <div className="team-empty-sub">Click "+ Add Teammate" to start building your payroll registry.</div>
+                        <button className="btn btn-primary btn-sm" onClick={() => setModalTeamOpen(true)}>Add your first teammate</button>
+                      </div>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Allocation Rate</th>
+                            <th>Asset Code</th>
+                            <th>Target Vault</th>
+                            <th>Status</th>
+                            <th></th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {teamList.map((t, idx) => (
+                            <tr key={idx}>
+                              <td><strong>{t.name}</strong></td>
+                              <td>{t.role}</td>
+                              <td className="mono">{t.rate}</td>
+                              <td className="mono">{t.rate.split(" ")[1] || "USDC"}</td>
+                              <td>{t.vault}</td>
+                              <td><span className="pill active">{t.status}</span></td>
+                              <td>
+                                <button
+                                  className="team-remove-btn"
+                                  title="Remove teammate"
+                                  onClick={() => {
+                                    setTeamList(prev => prev.filter((_, i) => i !== idx));
+                                    toast(`Removed ${t.name} from registry`);
+                                  }}
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                                    <path d="M10 11v6M14 11v6"/>
+                                    <path d="M9 6V4h6v2"/>
+                                  </svg>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </div>
               )}
@@ -2155,17 +2398,34 @@ export default function App() {
                             Enter the Batch ID provided by your employer to query and claim your batch payout allocation.
                           </div>
                           
-                          <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
-                            <input 
-                              type="number" 
-                              placeholder="Enter Batch ID (e.g. 1)" 
-                              value={claimBatchIdInput}
-                              onChange={(e) => setClaimBatchIdInput(e.target.value)}
-                            />
-                            <button className="btn btn-ghost" onClick={queryBatchPayout} disabled={sending}>
-                              Query Batch
+                          <div className="query-bar">
+                            <div className="query-bar-input-wrap">
+                              <svg className="query-bar-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20M9 21V9"/>
+                              </svg>
+                              <input
+                                type="number"
+                                className="query-bar-input"
+                                placeholder="Enter Batch ID (e.g. 1)"
+                                value={claimBatchIdInput}
+                                onChange={(e) => setClaimBatchIdInput(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && queryBatchPayout()}
+                              />
+                            </div>
+                            <button className="query-bar-btn" onClick={queryBatchPayout} disabled={sending}>
+                              {sending ? (
+                                <span style={{ opacity: 0.7 }}>Querying…</span>
+                              ) : (
+                                <>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                  </svg>
+                                  Query Batch
+                                </>
+                              )}
                             </button>
                           </div>
+
 
                           {queriedBatchPayout && (
                             <div style={{ background: "var(--paper-dim)", padding: "12px", borderRadius: "8px", marginBottom: "14px" }}>
@@ -2364,95 +2624,142 @@ export default function App() {
               {/* ⚙️ SETTINGS VIEW */}
               {activeSidebarView === "settings" && (
                 <div className="view active">
-                  <div className="panel">
-                    <div className="panel-head"><h3>Network Settings</h3></div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="t">Stellar Testnet Node</div>
-                        <div className="d">All payroll operations compile and broadcast to testnet RPC.</div>
-                      </div>
-                      <label className="switch">
-                        <input type="checkbox" checked disabled />
-                        <span className="slider"></span>
-                      </label>
+
+                  {/* Page header */}
+                  <div className="settings-page-header">
+                    <div className="settings-page-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.6-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.9.3H9A1.7 1.7 0 0010 3.6V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.9V9c.2.7.8 1.2 1.6 1.2H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>
+                      </svg>
                     </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="t">Stellar Mainnet Node</div>
-                        <div className="d">Locked until formal smart contract audits.</div>
-                      </div>
-                      <label className="switch">
-                        <input type="checkbox" disabled />
-                        <span className="slider"></span>
-                      </label>
+                    <div>
+                      <div className="settings-page-title">Workspace Settings</div>
+                      <div className="settings-page-sub">Manage your network, preferences, and feedback submissions</div>
                     </div>
                   </div>
 
-                  <div className="panel">
-                    <div className="panel-head"><h3>Worker Onboarding Feedback Registry</h3></div>
-                    <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                      Connected pilot remote worker or employer reviews. Submit feedback below to add to the dynamic registry!
+                  {/* ── Network Settings ── */}
+                  <div className="settings-section">
+                    <div className="settings-section-label">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                      Network
                     </div>
 
-                    <form onSubmit={submitFeedback} style={{ display: "grid", gap: "10px", marginBottom: "20px" }}>
-                      <div className="field-row">
-                        <div className="field">
-                          <label>Full Name</label>
-                          <input type="text" placeholder="e.g. Priyanshu Sharma" value={feedbackName} onChange={(e) => setFeedbackName(e.target.value)} />
+                    <div className="settings-card">
+                      {/* Testnet row */}
+                      <div className="scard-row">
+                        <div className="scard-row-left">
+                          <div className="scard-net-badge active">TESTNET</div>
+                          <div className="scard-row-info">
+                            <div className="scard-row-title">Stellar Testnet Node</div>
+                            <div className="scard-row-desc">All payroll operations compile and broadcast to testnet RPC.</div>
+                          </div>
                         </div>
-                        <div className="field">
-                          <label>Workspace Role</label>
-                          <select value={feedbackRole} onChange={(e) => setFeedbackRole(e.target.value)}>
-                            <option value="Worker">Worker</option>
-                            <option value="Employer">Employer</option>
-                          </select>
-                        </div>
+                        <label className="scard-toggle">
+                          <input type="checkbox" checked disabled />
+                          <span className="scard-slider"></span>
+                        </label>
                       </div>
-                      <div className="field">
-                        <label>Review / Feedback</label>
-                        <textarea placeholder="Write feedback notes..." rows={2} value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} />
-                      </div>
-                      <button className="btn btn-ghost" type="submit" style={{ justifySelf: "start" }}>
-                        Submit Review
-                      </button>
-                    </form>
 
-                    <div className="registry-list">
-                      {feedbackList.length === 0 ? (
-                        <div style={{ padding: "14px", fontStyle: "italic", color: "var(--ink-mute)", textAlign: "center" }}>
-                          No reviews submitted yet. Use the form above to add a dynamic entry!
-                        </div>
-                      ) : (
-                        feedbackList.map((f, idx) => (
-                          <div className="registry-item" key={idx}>
-                            <div className="registry-header">
-                              <strong>{f.name} ({f.role})</strong>
-                              <span>{f.date}</span>
-                            </div>
-                            <div className="registry-text">"{f.text}"</div>
-                            <div style={{ fontSize: "0.7rem", color: "var(--ink-mute)", marginTop: "4px" }}>
-                              Sender Address: {shorten(f.address, 8, 8)}
+                      <div className="scard-divider"/>
+
+                      {/* Mainnet row */}
+                      <div className="scard-row">
+                        <div className="scard-row-left">
+                          <div className="scard-net-badge locked">MAINNET</div>
+                          <div className="scard-row-info">
+                            <div className="scard-row-title">Stellar Mainnet Node</div>
+                            <div className="scard-row-desc">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: "4px", verticalAlign: "middle" }}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                              Locked until formal smart contract audits.
                             </div>
                           </div>
-                        ))
+                        </div>
+                        <label className="scard-toggle">
+                          <input type="checkbox" disabled />
+                          <span className="scard-slider"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Feedback Registry ── */}
+                  <div className="settings-section">
+                    <div className="settings-section-label">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                      Feedback Registry
+                    </div>
+
+                    <div className="settings-card">
+                      <div className="sfeedback-notice">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        Connected pilot remote worker or employer reviews. Submit feedback below to add to the dynamic registry.
+                      </div>
+
+                      <form onSubmit={submitFeedback} className="sfeedback-form">
+                        <div className="field-row">
+                          <div className="field">
+                            <label>Full Name</label>
+                            <input type="text" placeholder="e.g. Priyanshu Sharma" value={feedbackName} onChange={(e) => setFeedbackName(e.target.value)} />
+                          </div>
+                          <div className="field">
+                            <label>Workspace Role</label>
+                            <select value={feedbackRole} onChange={(e) => setFeedbackRole(e.target.value)}>
+                              <option value="Worker">👷 Worker</option>
+                              <option value="Employer">💼 Employer</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="field">
+                          <label>Review / Feedback</label>
+                          <textarea placeholder="Share your experience with ProofPay..." rows={3} value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <button className="sfeedback-submit" type="submit">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            Submit Review
+                          </button>
+                        </div>
+                      </form>
+
+                      {/* Review list */}
+                      {feedbackList.length > 0 && (
+                        <div className="sfeedback-list">
+                          <div className="sfeedback-list-label">Submitted Reviews ({feedbackList.length})</div>
+                          {feedbackList.map((f, idx) => (
+                            <div className="sfeedback-item" key={idx}>
+                              <div className="sfeedback-item-top">
+                                <div className="sfeedback-avatar">{f.name?.[0]?.toUpperCase() ?? "?"}</div>
+                                <div>
+                                  <div className="sfeedback-name">{f.name}</div>
+                                  <div className="sfeedback-meta">
+                                    <span className="sfeedback-role-pill">{f.role}</span>
+                                    <span>{f.date}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="sfeedback-text">"{f.text}"</div>
+                              <div className="sfeedback-addr">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                                {shorten(f.address, 8, 8)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {feedbackList.length === 0 && (
+                        <div className="sfeedback-empty">
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                          <span>No reviews yet — be the first to submit!</span>
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  <div className="panel">
-                    <div className="panel-head"><h3>Account Operations</h3></div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="t">Disconnect Stellar Wallet</div>
-                        <div className="d">Ends active session. You'll need to reconnect using Freighter to authorize payrolls.</div>
-                      </div>
-                      <button className="btn btn-danger-ghost btn-sm" onClick={disconnectWallet}>
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
                 </div>
               )}
+
 
             </div>
           </div>
@@ -2492,9 +2799,8 @@ export default function App() {
             <div className="field">
               <label>Currency Asset Standard</label>
               <select value={deployedTokenType} onChange={(e) => setDeployedTokenType(e.target.value as any)}>
-                <option value="XLM">Native XLM Token</option>
-                <option value="USDC">Testnet USDC Token Stablecoin</option>
-                <option value="CUSTOM">Custom SAC Token Address</option>
+                <option value="USDC">💵 USDC Stablecoin (Testnet)</option>
+                <option value="CUSTOM">🔧 Custom SAC Token Address</option>
               </select>
             </div>
 
@@ -2556,19 +2862,14 @@ export default function App() {
               <div className="field">
                 <label>Currency Asset</label>
                 <select name="ntAsset">
-                  <option value="XLM">XLM</option>
                   <option value="USDC">USDC</option>
                 </select>
               </div>
             </div>
-            <div className="field">
-              <label>Payroll Vault Allocation</label>
-              <select name="ntVault">
-                <option value="Engineering — Streaming">Engineering — Streaming</option>
-                <option value="Design — Streaming">Design — Streaming</option>
-                <option value="Contractors — Scheduled">Contractors — Scheduled</option>
-              </select>
-            </div>
+              <div className="field">
+                <label>Payroll Vault Allocation</label>
+                <input name="ntVault" required placeholder="e.g. Engineering — Streaming" />
+              </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModalTeamOpen(false)}>Cancel</button>
               <button type="submit" className="btn btn-primary btn-sm">Add teammate</button>
