@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProofPay — Payroll that streams, proof that doesn't leak</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3EEE2;
+    --paper-dim:#EAE2D0;
+    --paper-line:rgba(20,17,13,.13);
+    --paper-line-strong:rgba(20,17,13,.22);
+    --ink:#14110D;
+    --ink-soft:#3A342B;
+    --ink-mute:#746A5B;
+    --vault:#1F4D3D;
+    --vault-deep:#153A2E;
+    --vault-pale:#E4ECE6;
+    --gold:#A8792A;
+    --gold-pale:#F1E4C8;
+    --teal:#2B6873;
+    --danger:#A8402F;
+  }
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.6;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:"";
+    position:fixed;inset:0;
+    pointer-events:none;
+    z-index:1;
+    opacity:.5;
+    background-image:radial-gradient(rgba(20,17,13,.05) 1px, transparent 1px);
+    background-size:3px 3px;
+  }
+  .display{font-family:'Fraunces',Georgia,serif;letter-spacing:-.01em;}
+  a{color:inherit;text-decoration:none;}
+  .container{width:min(1180px, calc(100% - 48px)); margin:0 auto; position:relative; z-index:2;}
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.72rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--vault);
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+  .eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--vault);flex:none;}
+  ::selection{background:var(--vault-pale);color:var(--vault-deep);}
+
+  /* ---------- NAV ---------- */
+  nav{
+    position:sticky;top:0;z-index:100;
+    background:rgba(243,238,226,.86);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--paper-line);
+  }
+  .nav-inner{display:flex;align-items:center;justify-content:space-between;min-height:68px;}
+  .logo{display:flex;align-items:center;gap:10px;}
+  .logo-mark{width:32px;height:32px;flex:none;}
+  .logo-name{font-family:'Fraunces',serif;font-size:1.2rem;font-weight:500;}
+  .nav-links{display:flex;align-items:center;gap:32px;font-size:.92rem;color:var(--ink-soft);}
+  .nav-links a:hover{color:var(--vault);}
+  .nav-right{display:flex;align-items:center;gap:16px;}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    font-family:'Inter',sans-serif;font-weight:600;font-size:.9rem;
+    padding:11px 20px;border-radius:8px;border:1px solid transparent;
+    cursor:pointer;transition:transform .15s ease, background .15s ease, border-color .15s ease;
+    white-space:nowrap;
+  }
+  .btn-primary{background:var(--ink);color:var(--paper);}
+  .btn-primary:hover{background:var(--vault-deep);transform:translateY(-1px);}
+  .btn-ghost{background:transparent;color:var(--ink);border-color:var(--paper-line-strong);}
+  .btn-ghost:hover{border-color:var(--ink);}
+  .btn-sm{padding:8px 14px;font-size:.82rem;}
+  @media(max-width:860px){.nav-links{display:none;}}
+
+  /* ---------- HERO ---------- */
+  .hero{padding:96px 0 64px;position:relative;}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:64px;align-items:center;}
+  .hero h1{
+    font-size:clamp(2.4rem,4.6vw,4.1rem);
+    font-weight:400;
+    line-height:1.04;
+    margin:20px 0 26px;
+  }
+  .hero h1 em{font-style:italic;font-weight:400;color:var(--vault);}
+  .hero p.lede{font-size:1.14rem;color:var(--ink-soft);max-width:520px;margin-bottom:34px;}
+  .hero-ctas{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:40px;}
+  .trust-row{display:flex;flex-wrap:wrap;gap:10px;}
+  .trust-chip{
+    font-family:'IBM Plex Mono',monospace;font-size:.72rem;letter-spacing:.03em;
+    padding:7px 12px;border:1px solid var(--paper-line-strong);border-radius:999px;
+    color:var(--ink-mute);
+  }
+
+  /* ---- signature seal ---- */
+  .seal-wrap{display:flex;align-items:center;justify-content:center;position:relative;}
+  .seal{width:min(420px,92vw);aspect-ratio:1;position:relative;}
+  .seal svg{width:100%;height:100%;overflow:visible;}
+  .ring-rotate{animation:spin 40s linear infinite;transform-origin:200px 200px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .seal-center{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;
+  }
+  .seal-num{
+    font-family:'IBM Plex Mono',monospace;font-weight:500;
+    font-size:clamp(1.5rem,3vw,2.05rem);color:var(--vault-deep);letter-spacing:-.01em;
+  }
+  .seal-num small{font-size:.55em;color:var(--ink-mute);font-weight:400;margin-left:4px;}
+  .seal-status{
+    margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:6px;
+  }
+  .seal-status::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 1.6s ease infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+  .seal-caption{margin-top:22px;font-size:.78rem;color:var(--ink-mute);text-align:center;}
+  @media(max-width:900px){.hero-grid{grid-template-columns:1fr;} .seal-wrap{order:-1;margin-bottom:12px;}}
+
+  /* ---------- TICKER ---------- */
+  .ticker-band{
+    border-top:1px solid var(--paper-line);border-bottom:1px solid var(--paper-line);
+    background:var(--paper-dim);padding:12px 0;overflow:hidden;white-space:nowrap;
+  }
+  .ticker-track{display:inline-flex;gap:48px;animation:ticker 26s linear infinite;font-family:'IBM Plex Mono',monospace;font-size:.78rem;color:var(--ink-mute);}
+  .ticker-track span b{color:var(--vault-deep);font-weight:500;}
+  @keyframes ticker{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+  /* ---------- SECTION shared ---------- */
+  section{padding:96px 0;position:relative;}
+  .sec-head{max-width:640px;margin-bottom:56px;}
+  .sec-head h2{font-size:clamp(1.9rem,3vw,2.7rem);font-weight:400;margin:16px 0 14px;}
+  .sec-head p{color:var(--ink-soft);font-size:1.03rem;}
+
+  /* ---------- VAULT TYPES ---------- */
+  .vault-types{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--paper-line-strong);border:1px solid var(--paper-line-strong);border-radius:14px;overflow:hidden;}
+  .vault-card{background:var(--paper);padding:38px 32px;transition:background .2s ease;}
+  .vault-card:hover{background:var(--paper-dim);}
+  .vault-tag{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-mute);border:1px solid var(--paper-line-strong);display:inline-block;padding:4px 9px;border-radius:5px;margin-bottom:20px;}
+  .vault-card h3{font-family:'Fraunces',serif;font-size:1.45rem;font-weight:500;margin-bottom:12px;}
+  .vault-card p{color:var(--ink-soft);font-size:.94rem;}
+  @media(max-width:860px){.vault-types{grid-template-columns:1fr;}}
+
+  /* ---------- FEATURES ---------- */
+  .feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;}
+  .feat{border-top:2px solid var(--ink);padding-top:20px;}
+  .feat .num{font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--gold);letter-spacing:.1em;}
+  .feat h4{font-family:'Fraunces',serif;font-weight:500;font-size:1.12rem;margin:10px 0 8px;}
+  .feat p{color:var(--ink-soft);font-size:.9rem;}
+  @media(max-width:960px){.feat-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.feat-grid{grid-template-columns:1fr;}}
+
+  /* ---------- PROOF SHOWCASE ---------- */
+  .proof-wrap{display:grid;grid-template-columns:.95fr 1.05fr;gap:64px;align-items:center;}
+  .proof-copy p{color:var(--ink-soft);margin:18px 0 26px;max-width:460px;}
+  .proof-list{display:flex;flex-direction:column;gap:14px;}
+  .proof-list li{display:flex;gap:12px;font-size:.92rem;color:var(--ink-soft);align-items:flex-start;}
+  .proof-list li::before{content:"—";color:var(--gold);flex:none;}
+  .certificate{
+    background:var(--paper);border:1px solid var(--ink);border-radius:4px;
+    padding:36px;position:relative;box-shadow:8px 8px 0 var(--paper-line-strong);
+  }
+  .certificate::after{
+    content:"";position:absolute;inset:8px;border:1px solid var(--paper-line-strong);pointer-events:none;
+  }
+  .cert-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px;}
+  .cert-top .eyebrow{color:var(--ink-mute);}
+  .cert-top .eyebrow::before{background:var(--ink-mute);}
+  .stamp{
+    width:74px;height:74px;border-radius:50%;border:2px solid var(--vault);color:var(--vault);
+    display:flex;align-items:center;justify-content:center;text-align:center;font-family:'IBM Plex Mono',monospace;
+    font-size:.55rem;letter-spacing:.05em;text-transform:uppercase;transform:rotate(-8deg);flex:none;line-height:1.2;padding:6px;
+  }
+  .cert-row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px dashed var(--paper-line-strong);font-size:.9rem;}
+  .cert-row span:first-child{color:var(--ink-mute);}
+  .cert-row span:last-child{font-family:'IBM Plex Mono',monospace;}
+  .cert-hash{margin-top:20px;font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--ink-mute);word-break:break-all;}
+  @media(max-width:900px){.proof-wrap{grid-template-columns:1fr;}}
+
+  /* ---------- TECH STRIP ---------- */
+  .tech-strip{background:var(--ink);color:var(--paper);border-radius:16px;padding:44px;display:grid;grid-template-columns:1.1fr 1.6fr;gap:40px;}
+  .tech-strip h3{font-family:'Fraunces',serif;font-weight:400;font-size:1.7rem;margin-bottom:12px;}
+  .tech-strip p{color:rgba(243,238,226,.65);font-size:.92rem;max-width:340px;}
+  .tech-rows{display:flex;flex-direction:column;gap:0;}
+  .tech-row{display:flex;justify-content:space-between;gap:20px;padding:13px 0;border-bottom:1px solid rgba(243,238,226,.14);font-family:'IBM Plex Mono',monospace;font-size:.8rem;}
+  .tech-row:last-child{border-bottom:none;}
+  .tech-row span:first-child{color:rgba(243,238,226,.5);}
+  .tech-row span:last-child{color:var(--paper);}
+  @media(max-width:900px){.tech-strip{grid-template-columns:1fr;padding:30px;}}
+
+  /* ---------- CTA BAND ---------- */
+  .cta-band{text-align:center;padding:110px 0;}
+  .cta-band h2{font-size:clamp(2rem,4vw,3.2rem);font-weight:400;max-width:760px;margin:0 auto 30px;}
+  .cta-band .btn{margin:0 auto;}
+
+  /* ---------- FOOTER ---------- */
+  footer{border-top:1px solid var(--paper-line);padding:36px 0;}
+  .foot-inner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}
+  .foot-inner .logo-name{font-size:1rem;}
+  .foot-links{display:flex;gap:26px;font-size:.85rem;color:var(--ink-mute);}
+  .foot-links a:hover{color:var(--ink);}
+
+  @media(prefers-reduced-motion:reduce){
+    .ring-rotate,.ticker-track,.seal-status::before{animation:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container nav-inner">
+    <a class="logo" href="#top">
+      <svg class="logo-mark" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#14110D"/><path d="M9 21V11h6.2c2.4 0 4 1.5 4 3.7 0 2.2-1.6 3.7-4 3.7H12v2.6H9zm3-5.1h2.9c1 0 1.7-.6 1.7-1.6s-.7-1.6-1.7-1.6H12v3.2z" fill="#F3EEE2"/></svg>
+      <span class="logo-name">ProofPay</span>
+    </a>
+    <div class="nav-links">
+      <a href="#vaults">Vaults</a>
+      <a href="#features">Product</a>
+      <a href="#proofs">Proofs</a>
+      <a href="#tech">Network</a>
+    </div>
+    <div class="nav-right">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--ink-mute);letter-spacing:.05em;" class="btn-ghost btn btn-sm" >● Stellar Testnet</span>
+      <a class="btn btn-primary btn-sm" href="proofpay-dashboard.html">Open dashboard →</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="container hero-grid">
+    <div>
+      <span class="eyebrow">Soroban vaults · non-custodial payroll</span>
+      <h1 class="display">Payroll that moves <em>by the second.</em><br>Proof that never spills a name.</h1>
+      <p class="lede">ProofPay runs payroll through on-chain vaults on Stellar — scheduled, streaming or batched — so a worker in Lagos and an employer in Lisbon can settle without a bank in the middle, and prove their income without handing over a statement.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="proofpay-dashboard.html">Open the dashboard →</a>
+        <a class="btn btn-ghost" href="#vaults">See how a vault works</a>
+      </div>
+      <div class="trust-row">
+        <span class="trust-chip">Non-interactive claims</span>
+        <span class="trust-chip">XLM · USDC vaults</span>
+        <span class="trust-chip">Dynamic vault factory</span>
+        <span class="trust-chip">Income proofs (roadmap)</span>
+      </div>
+    </div>
+
+    <div class="seal-wrap">
+      <div class="seal">
+        <svg viewBox="0 0 400 400">
+          <circle cx="200" cy="200" r="188" fill="none" stroke="#14110D" stroke-opacity="0.1" stroke-width="1"/>
+          <circle cx="200" cy="200" r="150" fill="none" stroke="#1F4D3D" stroke-opacity="0.18" stroke-width="1"/>
+          <g class="ring-rotate">
+            <defs><path id="ringpath" d="M 200,200 m -172,0 a 172,172 0 1,1 344,0 a 172,172 0 1,1 -344,0"/></defs>
+            <text font-family="IBM Plex Mono, monospace" font-size="10.5" letter-spacing="3" fill="#A8792A">
+              <textPath href="#ringpath" startOffset="0%">
+                VAULT · 004 · ENGINEERING · SOROBAN TESTNET · STREAMING · VAULT · 004 · ENGINEERING · SOROBAN TESTNET · STREAMING ·
+              </textPath>
+            </text>
+          </g>
+          <circle cx="200" cy="200" r="120" fill="#F3EEE2" stroke="#14110D" stroke-width="1.5"/>
+        </svg>
+        <div class="seal-center">
+          <div class="seal-num" id="seal-amount">0.000<small>XLM</small></div>
+          <div class="seal-status">Streaming now</div>
+        </div>
+      </div>
+      <div class="seal-caption">Live pay rate for one engineering vault — 1.2 XLM / minute, claimable any time.</div>
+    </div>
+  </div>
+</header>
+
+<div class="ticker-band">
+  <div class="ticker-track" id="ticker"></div>
+</div>
+
+<section id="vaults">
+  <div class="container">
+    <div class="sec-head">
+      <span class="eyebrow">Three ways a vault can pay</span>
+      <h2 class="display">Pick the rhythm, not just the rate.</h2>
+      <p>Every company gets its own isolated vault, deployed by the factory on demand. What differs is how money leaves it.</p>
+    </div>
+    <div class="vault-types">
+      <div class="vault-card">
+        <span class="vault-tag">Scheduled</span>
+        <h3 class="display">Lock it, release it on a date.</h3>
+        <p>Set aside a lump sum that unlocks at a specific time. Built for contractor milestones, sign-on bonuses and cliff vesting, where the whole point is that nothing moves early.</p>
+      </div>
+      <div class="vault-card">
+        <span class="vault-tag">Streaming</span>
+        <h3 class="display">Pay out linearly, second by second.</h3>
+        <p>A continuous rate accrues in the vault and a worker can claim whatever has vested at any moment — no waiting on a monthly cycle for money already earned.</p>
+      </div>
+      <div class="vault-card">
+        <span class="vault-tag">Batch</span>
+        <h3 class="display">One run, a whole team claims.</h3>
+        <p>Load a multi-worker payroll in a single transaction. Every teammate claims their own allocation with their own wallet — the employer never touches anyone's keys.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="container">
+    <div class="sec-head">
+      <span class="eyebrow">Built for teams that don't share a border</span>
+      <h2 class="display">The parts that make it trustworthy.</h2>
+    </div>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="num">FACTORY</div>
+        <h4>Dynamic vault factory</h4>
+        <p>Each company's vault is deployed on demand from a Soroban factory contract — isolated funds, never a shared pool.</p>
+      </div>
+      <div class="feat">
+        <div class="num">CUSTODY</div>
+        <h4>Non-interactive claims</h4>
+        <p>Workers claim with their own wallet signature. The employer funds the vault and never sees a private key.</p>
+      </div>
+      <div class="feat">
+        <div class="num">ASSETS</div>
+        <h4>Multi-asset vaults</h4>
+        <p>Fund a vault in XLM or USDC and let workers claim in whichever asset the vault was set up to hold.</p>
+      </div>
+      <div class="feat">
+        <div class="num">PRIVACY</div>
+        <h4>Selective income proofs</h4>
+        <p>Generate a cryptographic proof of a pay history for a landlord or visa office — without exposing every transaction.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="proofs">
+  <div class="container proof-wrap">
+    <div class="proof-copy">
+      <span class="eyebrow">The paperwork, without the paperwork</span>
+      <h2 class="display" style="font-size:clamp(1.8rem,3vw,2.4rem);margin:16px 0;">One statement, verifiable on-chain.</h2>
+      <p>Instead of exporting a bank statement, a worker generates a signed certificate straight from their claim history — a landlord or embassy can check it against the ledger in seconds.</p>
+      <ul class="proof-list">
+        <li>Chooses a date range and an asset to summarize.</li>
+        <li>ProofPay reads only confirmed claims from that worker's vault.</li>
+        <li>The certificate carries a hash that anyone can verify against the chain, without ever pulling the raw transaction history.</li>
+      </ul>
+    </div>
+    <div class="certificate">
+      <div class="cert-top">
+        <div>
+          <span class="eyebrow">Income verification</span>
+          <div class="display" style="font-size:1.3rem;margin-top:8px;">Certificate #0417</div>
+        </div>
+        <div class="stamp">verified<br>on-chain</div>
+      </div>
+      <div class="cert-row"><span>Worker</span><span>GA3F…92XQ</span></div>
+      <div class="cert-row"><span>Period</span><span>01 Apr – 30 Jun 2026</span></div>
+      <div class="cert-row"><span>Verified amount</span><span>4,820.500 XLM</span></div>
+      <div class="cert-row"><span>Vault</span><span>CDHJ…NPJQ</span></div>
+      <div class="cert-hash">proof · bdb16cfa3ed2ad68721dd96d6657f68e1880d92439ea788281b02a2966f445f4</div>
+    </div>
+  </div>
+</section>
+
+<section id="tech">
+  <div class="container">
+    <div class="tech-strip">
+      <div>
+        <span class="eyebrow" style="color:#A8792A;">On testnet today</span>
+        <h3 class="display">Real contracts, not a mockup.</h3>
+        <p>ProofPay's factory and vault contracts are live on Stellar Testnet right now, deployed with Soroban SDK v25.3.1.</p>
+      </div>
+      <div class="tech-rows">
+        <div class="tech-row"><span>Network</span><span>Stellar · Testnet</span></div>
+        <div class="tech-row"><span>Factory contract</span><span>CB4APYC7…S4JXI6ILNQ7TX6X4RFX</span></div>
+        <div class="tech-row"><span>Default vault</span><span>CDHJGGDS…4QPYHAKNWUPNYNPJQ</span></div>
+        <div class="tech-row"><span>Wallets supported</span><span>Freighter · xBull · Albedo</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="container">
+    <span class="eyebrow" style="justify-content:center;">Set up in minutes</span>
+    <h2 class="display">Start a vault before your coffee goes cold.</h2>
+    <a class="btn btn-primary" href="proofpay-dashboard.html">Open the dashboard →</a>
+  </div>
+</section>
+
+<footer>
+  <div class="container foot-inner">
+    <a class="logo" href="#top">
+      <svg class="logo-mark" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#14110D"/><path d="M9 21V11h6.2c2.4 0 4 1.5 4 3.7 0 2.2-1.6 3.7-4 3.7H12v2.6H9zm3-5.1h2.9c1 0 1.7-.6 1.7-1.6s-.7-1.6-1.7-1.6H12v3.2z" fill="#F3EEE2"/></svg>
+      <span class="logo-name">ProofPay</span>
+    </a>
+    <div class="foot-links">
+      <a href="proofpay-dashboard.html">Dashboard</a>
+      <a href="#vaults">Vaults</a>
+      <a href="#proofs">Proofs</a>
+      <a href="https://github.com/KrishnaChoubey20/ProofPay">GitHub</a>
+    </div>
+    <span style="font-size:.8rem;color:var(--ink-mute);">Built on Stellar · Soroban testnet demo</span>
+  </div>
+</footer>
+
+<script>
+  // live ticking seal amount
+  (function(){
+    let base = 812.4;
+    const rate = 1.2/60; // XLM per second
+    const el = document.getElementById('seal-amount');
+    function tick(){
+      base += rate;
+      el.innerHTML = base.toFixed(3) + '<small>XLM</small>';
+    }
+    setInterval(tick, 1000);
+  })();
+
+  // ticker content, duplicated for seamless loop
+  (function(){
+    const items = [
+      'DEPOSIT · VAULT#004 · +1,200.000 XLM',
+      'CLAIM · GA3F…92XQ · 84.220 XLM',
+      'FACTORY · NEW VAULT DEPLOYED · VAULT#011',
+      'STREAM · ENGINEERING · 1.2 XLM/min',
+      'CLAIM · GBOP…44LK · 212.900 USDC',
+      'PROOF · CERTIFICATE #0417 · ISSUED'
+    ];
+    const track = document.getElementById('ticker');
+    const html = items.map(t=>`<span>${t}</span>`).join('');
+    track.innerHTML = html + html;
+  })();
+</script>
+</body>
+</html>

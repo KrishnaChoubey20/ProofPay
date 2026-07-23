@@ -40,6 +40,15 @@ impl ProofPayFactory {
     pub fn deploy_vault(env: Env, admin: Address, native_token: Address, salt: BytesN<32>) -> Address {
         admin.require_auth();
         
+        #[cfg(not(test))]
+        {
+            let usdc_str = soroban_sdk::String::from_str(&env, "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA");
+            let expected_usdc = Address::from_string(&usdc_str);
+            if native_token != expected_usdc {
+                panic!("Only USDC (CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) is supported!");
+            }
+        }
+        
         let wasm_hash: BytesN<32> = env.storage().instance().get(&DataKey::VaultWasmHash).unwrap();
         
         // Prepare constructor arguments: admin, native_token
@@ -108,7 +117,8 @@ mod tests {
 
         let factory_admin = Address::generate(&env);
         let vault_admin = Address::generate(&env);
-        let native_token = Address::generate(&env);
+        let usdc_str = soroban_sdk::String::from_str(&env, "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA");
+        let native_token = Address::from_string(&usdc_str);
 
         // Upload the vault Wasm to get the hash
         let vault_wasm_hash = env.deployer().upload_contract_wasm(vault_wasm::WASM);

@@ -138,6 +138,16 @@ impl ProofPayVault {
     /// Deploy-time initialiser. Sets the admin, native token address and zeroes the total deposited.
     pub fn __constructor(env: Env, admin: Address, native_token: Address) {
         admin.require_auth();
+        
+        #[cfg(not(test))]
+        {
+            let usdc_str = soroban_sdk::String::from_str(&env, "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA");
+            let expected_usdc = Address::from_string(&usdc_str);
+            if native_token != expected_usdc {
+                panic!("Only USDC (CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) is supported!");
+            }
+        }
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::NativeToken, &native_token);
         env.storage().instance().set(&DataKey::TotalDeposited, &0i128);
