@@ -370,7 +370,7 @@ export default function App() {
         setVaultTokenAddress(tokAddr);
         if (tokAddr === "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC") {
           setVaultTokenSymbol("XLM");
-        } else if (tokAddr === "CA3C3Y24F7PZNOEPHICBMBMBMCT3VE5PZNOEPHICBMBMBMCT3VE5PKG6F") {
+        } else if (tokAddr === "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA") {
           setVaultTokenSymbol("USDC");
         } else {
           setVaultTokenSymbol(tokAddr.slice(0, 4) + "…" + tokAddr.slice(-4));
@@ -587,7 +587,7 @@ export default function App() {
     try {
       let tokenAddress = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
       if (deployedTokenType === "USDC") {
-        tokenAddress = "CA3C3Y24F7PZNOEPHICBMBMBMCT3VE5PZNOEPHICBMBMBMCT3VE5PKG6F";
+        tokenAddress = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
       } else if (deployedTokenType === "CUSTOM") {
         const trimmed = customTokenSAC.trim();
         if (!trimmed || trimmed.length !== 56 || !trimmed.startsWith("C")) {

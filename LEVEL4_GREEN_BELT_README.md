@@ -22,7 +22,7 @@ Employers can now perform bulk payroll dispersion in a single on-chain transacti
 
 ### 2. Exclusive USDC Stablecoin Payrolls
 Our dynamic vault factory has been upgraded to strictly enforce USDC testnet usage for all payroll environments:
-* **Contract-Level Lock**: The `payroll-factory` and `payroll-vault` smart contracts strictly enforce the USDC testnet contract ID (`CA3C3Y24F7PZNOEPHICBMBMBMCT3VE5PZNOEPHICBMBMBMCT3VE5PKG6F`) at the constructor level.
+* **Contract-Level Lock**: The `payroll-factory` and `payroll-vault` smart contracts strictly enforce the USDC testnet contract ID (`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`) at the constructor level.
 * **Security**: This prevents deployment of malicious or "fake" tokens, ensuring workers are always paid in authentic USDC stablecoins.
 * **Unified Currency**: The entire frontend UI and backend logic uses USDC natively, ensuring pricing stability and a consistent token economy for employers and workers alike.
 
