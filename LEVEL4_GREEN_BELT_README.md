@@ -117,7 +117,13 @@ We have rigorously followed the Green Belt requirements to ensure ProofPay is a 
 
 ### Demo & Review
 - [x] **Live demo video showcasing complete functionality**: [YouTube Link](https://youtu.be/5cFZdiSHbZI)
-- [x] **Screenshots**: Provided in the repository for Product UI, Mobile responsive design, and Analytics setup.
+- [x] **Screenshots**: 
+  - **Product UI:**  
+    ![Product UI](./public/screenshots/new%20ui.png)
+  - **Mobile Responsive Design:**  
+    ![Mobile UI](./public/screenshots/mobile%20view%20sidebar.png)
+  - **Analytics Monitoring:**  
+    ![Analytics](./public/screenshots/vercel%20analytics.png)
 
 ---
 
