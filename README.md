@@ -26,7 +26,9 @@ This repository houses the step-by-step evolution of ProofPay across the challen
 *   👉 *Detailed documentation, tests outputs, and verification results are in the **[Green Belt README](./LEVEL4_GREEN_BELT_README.md)**.*
 
 ### 🟠 [Level 3 — Orange Belt](./LEVEL3_ORANGE_BELT_README.md)
-
+*   **Focus:** Advanced smart contracts, factory deployments, scheduled/streaming payments, and CI/CD pipelines.
+*   *Key Implementations:* `payroll-factory` for dynamic vault creation, scheduled payouts, linear payment streams, and GitHub Actions CI.
+*   👉 *Detailed documentation, tests outputs, and verification results are in the **[Orange Belt README](./LEVEL3_ORANGE_BELT_README.md)**.*
 ### 🟡 [Level 2 — Yellow Belt](./LEVEL2_YELLOW_BELT_README.md)
 *   **Focus:** Multi-wallet web application integration, Soroban smart contract deployment, and real-time events.
 *   *Key Implementations:* Multi-wallet modal (StellarWalletsKit), shared vault contract, and live activity event stream.
