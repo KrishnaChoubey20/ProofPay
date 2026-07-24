@@ -1579,7 +1579,10 @@ export default function App() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/></svg>
                         Send Payroll
                       </a>
-                      
+                      <a href="#/employer/history" className={`side-link ${activeSidebarView === "history" ? "active" : ""}`}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Tx History
+                      </a>
                     </>
                   )}
 
@@ -2128,8 +2131,8 @@ export default function App() {
                 )}
 
 
-              {/* 📜 WORKER TX HISTORY VIEW */}
-              {userRole === "worker" && activeSidebarView === "history" && (
+              {/* 📜 TX HISTORY VIEW (Shared by Worker & Employer) */}
+              {(userRole === "worker" || userRole === "employer") && activeSidebarView === "history" && (
                 <div className="view active">
                   <div className="panel">
                     <div className="panel-head">
