@@ -199,7 +199,7 @@ export default function App() {
   const [txStatus, setTxStatus] = useState<TransactionStatus>({ type: "idle" });
 
   // Vault Payroll Panel states
-  const [depositType, setDepositType] = useState<"instant" | "scheduled" | "streaming">("instant");
+  const [depositType, setDepositType] = useState<"batch_stream" | "instant" | "scheduled" | "streaming">("batch_stream");
   const [claimType, setClaimType] = useState<"instant" | "scheduled" | "streaming" | "batch">("instant");
   const [vaultWorker, setVaultWorker] = useState("");
   const [vaultAmount, setVaultAmount] = useState("1");
@@ -229,6 +229,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<"employer" | "worker" | "verifier">("employer");
   const [deployedTokenType, setDeployedTokenType] = useState<"XLM" | "USDC" | "CUSTOM">("USDC");
   const [customTokenSAC, setCustomTokenSAC] = useState("");
+  const [employerSendType, setEmployerSendType] = useState<"batch_stream" | "instant" | "scheduled">("batch_stream");
 
   // Level 4 Batch Payroll States
   const [batchWorkers, setBatchWorkers] = useState<{ address: string; amount: string }[]>([]);
@@ -1733,11 +1734,35 @@ export default function App() {
               {userRole === "employer" && activeSidebarView === "overview" && (
                   <div className="view active">
                     <div className="panel" style={{ maxWidth: "600px", margin: "0 auto" }}>
-                      <div className="panel-header">
+                      <div className="panel-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <h2>Send Payroll</h2>
+                        <div style={{ display: "flex", gap: "8px", background: "var(--paper)", padding: "4px", borderRadius: "8px" }}>
+                          <button 
+                            className={`btn ${employerSendType === "batch_stream" ? "btn-primary" : "btn-ghost"}`} 
+                            style={{ padding: "6px 12px", fontSize: "0.85rem" }}
+                            onClick={() => { setEmployerSendType("batch_stream"); setDepositType("streaming"); }}
+                          >
+                            Streaming
+                          </button>
+                          <button 
+                            className={`btn ${employerSendType === "instant" ? "btn-primary" : "btn-ghost"}`} 
+                            style={{ padding: "6px 12px", fontSize: "0.85rem" }}
+                            onClick={() => { setEmployerSendType("instant"); setDepositType("instant"); }}
+                          >
+                            Instant
+                          </button>
+                          <button 
+                            className={`btn ${employerSendType === "scheduled" ? "btn-primary" : "btn-ghost"}`} 
+                            style={{ padding: "6px 12px", fontSize: "0.85rem" }}
+                            onClick={() => { setEmployerSendType("scheduled"); setDepositType("scheduled"); }}
+                          >
+                            Time-Locked
+                          </button>
+                        </div>
                       </div>
                       <div className="panel-body">
-                        <form onSubmit={async (e) => {
+                        {employerSendType === "batch_stream" && (
+                          <form onSubmit={async (e) => {
                             e.preventDefault();
                             if (!stellarWallet.address) return;
                             setSending(true);
@@ -1831,7 +1856,71 @@ export default function App() {
                               {sending ? "Processing Batch..." : `Fund ${batchRecipients.length} Streaming Payment${batchRecipients.length > 1 ? "s" : ""}`}
                             </button>
                           </form>
+                        )}
 
+                        {(employerSendType === "instant" || employerSendType === "scheduled") && (
+                          <form onSubmit={depositToVault} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                            <div className="field">
+                              <label>Worker Address</label>
+                              <input 
+                                type="text" 
+                                placeholder="G..." 
+                                value={vaultWorker}
+                                onChange={e => setVaultWorker(e.target.value)} 
+                                required 
+                              />
+                            </div>
+                            <div className="field">
+                              <label>Amount (USDC)</label>
+                              <input 
+                                type="number" 
+                                step="0.01" 
+                                placeholder="100.00" 
+                                value={vaultAmount}
+                                onChange={e => setVaultAmount(e.target.value)} 
+                                required 
+                              />
+                            </div>
+                            
+                            {employerSendType === "scheduled" && (
+                              <div className="field">
+                                <label>Release Date & Time</label>
+                                <input 
+                                  type="datetime-local" 
+                                  value={releaseTime}
+                                  onChange={e => setReleaseTime(e.target.value)} 
+                                  required 
+                                />
+                                <div style={{ fontSize: "0.8rem", color: "var(--ink-mute)", marginTop: "4px" }}>
+                                  Funds will be locked and unclaimable until this exact time.
+                                </div>
+                              </div>
+                            )}
+
+                            {vaultTxStatus.type !== "idle" && (
+                              <div className={`tx-status-box ${vaultTxStatus.type}`} style={{ padding: "12px", borderRadius: "8px", background: vaultTxStatus.type === 'error' ? 'rgba(235, 87, 87, 0.1)' : vaultTxStatus.type === 'success' ? 'rgba(39, 174, 96, 0.1)' : 'var(--paper-panel)' }}>
+                                <div style={{ fontWeight: 600, color: vaultTxStatus.type === 'error' ? '#eb5757' : vaultTxStatus.type === 'success' ? '#27ae60' : 'var(--ink)' }}>{vaultTxStatus.title}</div>
+                                <div style={{ fontSize: "0.9rem", color: vaultTxStatus.type === 'error' ? '#eb5757' : 'var(--ink-mute)', marginTop: "4px" }}>
+                                  {vaultTxStatus.message}
+                                </div>
+                                {vaultTxStatus.type === 'success' && vaultTxStatus.hash && (
+                                  <a
+                                    href={`https://stellar.expert/explorer/testnet/tx/${vaultTxStatus.hash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ fontSize: "0.85rem", color: "#27ae60", textDecoration: "underline", display: "inline-block", marginTop: "6px" }}
+                                  >
+                                    View transaction on Stellar Expert ↗
+                                  </a>
+                                )}
+                              </div>
+                            )}
+
+                            <button type="submit" className="btn btn-primary" style={{ marginTop: "8px", padding: "16px", fontSize: "1.05rem" }} disabled={sending}>
+                              {sending ? "Processing..." : `Send ${employerSendType === "instant" ? "Instant" : "Time-Locked"} Payment`}
+                            </button>
+                          </form>
+                        )}
                       </div>
                     </div>
                   </div>
