@@ -2598,6 +2598,13 @@ export default function App() {
         )}
       </div>
 
+      <a href="mailto:feedback@proofpay.app?subject=ProofPay Feedback" className="feedback-float-btn" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Feedback
+      </a>
+
       <div className="toast-wrap" id="toast-wrap"></div>
     </>
   );

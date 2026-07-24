@@ -2327,3 +2327,28 @@ tr:last-child td {
 @media(prefers-reduced-motion:reduce){
   .ppl-ring-rotate,.ppl-ticker-track,.ppl-seal-status::before{animation:none !important;}
 }
+
+.feedback-float-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--vault);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  box-shadow: 0 4px 12px rgba(130, 71, 229, 0.3);
+  z-index: 999;
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.feedback-float-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(130, 71, 229, 0.4);
+  color: #fff;
+}
