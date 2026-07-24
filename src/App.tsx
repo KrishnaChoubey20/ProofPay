@@ -296,6 +296,7 @@ export default function App() {
       const resolvedVault = await getVaultFromFactory(stellarWallet.address);
       if (resolvedVault) {
         setCustomVaultId(resolvedVault);
+        setUserRole("employer");
       } else {
         setCustomVaultId(null);
       }
@@ -330,6 +331,9 @@ export default function App() {
       );
       
       setMyAvailableVaults(results);
+      if (results.length > 0 && !customVaultId) {
+        setUserRole("worker");
+      }
     } catch (e) {
       console.error("Failed to scan vaults for payroll", e);
     }
@@ -639,6 +643,9 @@ export default function App() {
 
       await checkCustomVault();
       setUseCustomVault(true);
+      if (newVaultAddress) {
+        setMyAvailableVaults(prev => [...prev, { address: newVaultAddress, hasStream: false, hasScheduled: false }]);
+      }
       await loadBalance();
     } catch (error) {
       const errKind = getWalletErrorKind(error);
@@ -1591,63 +1598,11 @@ export default function App() {
             <nav className="side-nav">
               <div style={{ padding: "0 4px 12px", borderBottom: "1px solid rgba(243,238,226,.1)" }}>
                 <label style={{ fontSize: "0.65rem", color: "rgba(243, 238, 226, 0.4)", textTransform: "uppercase", fontWeight: "bold", display: "block", marginBottom: "6px", letterSpacing: "0.1em" }}>Workspace Role</label>
-
-                {/* Custom role dropdown */}
-                <div style={{ position: "relative" }}>
-                  {roleMenuOpen && (
-                    <>
-                      <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onClick={() => setRoleMenuOpen(false)} />
-                      <div className="role-dropdown">
-                        {([
-                          { value: "employer", icon: "💼", label: "Employer Workspace" },
-                          { value: "worker",   icon: "👷", label: "Worker Dashboard" },
-                          { value: "verifier", icon: "🔍", label: "Verifier Portal" },
-                        ] as const).map((opt) => (
-                          <button
-                            key={opt.value}
-                            className={`role-opt${userRole === opt.value ? " active" : ""}`}
-                            onClick={() => {
-                              setUserRole(opt.value);
-                              clearErrors();
-                              setRoleMenuOpen(false);
-                              if (opt.value === "employer") setActiveSidebarView("overview");
-                              else if (opt.value === "worker") setActiveSidebarView("claims");
-                              else if (opt.value === "verifier") setActiveSidebarView("portal");
-                            }}
-                          >
-                            <span className="role-opt-icon">{opt.icon}</span>
-                            <span>{opt.label}</span>
-                            {userRole === opt.value && (
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: "auto" }}>
-                                <polyline points="20 6 9 17 4 12"/>
-                              </svg>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-
-                  {/* Trigger button */}
-                  <button
-                    className={`role-trigger${roleMenuOpen ? " open" : ""}`}
-                    onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                    aria-expanded={roleMenuOpen}
-                  >
-                    <span className="role-trigger-icon">
-                      {userRole === "employer" ? "💼" : userRole === "worker" ? "👷" : "🔍"}
-                    </span>
-                    <span style={{ flex: 1, textAlign: "left" }}>
-                      {userRole === "employer" ? "Employer Workspace" : userRole === "worker" ? "Worker Dashboard" : "Verifier Portal"}
-                    </span>
-                    <svg
-                      width="11" height="11" viewBox="0 0 24 24" fill="none"
-                      stroke="rgba(243,238,226,0.45)" strokeWidth="2.2"
-                      style={{ flex: "none", transition: "transform 0.2s ease", transform: roleMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-                    >
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
+                <div className="role-badge" style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "rgba(243,238,226,0.05)", borderRadius: "6px", fontSize: "0.85rem", color: "var(--ink-body)" }}>
+                  <span>{userRole === "employer" ? "💼" : userRole === "worker" ? "👷" : "🔍"}</span>
+                  <span style={{ fontWeight: 500 }}>
+                    {userRole === "employer" ? "Employer Workspace" : userRole === "worker" ? "Worker Dashboard" : "Verifier Portal"}
+                  </span>
                 </div>
               </div>
 
@@ -2077,7 +2032,7 @@ export default function App() {
                           <path d="M22 21c0-2.9-1.8-5.3-4.4-6.3"/>
                         </svg>
                         <div className="team-empty-title">No teammates added yet</div>
-                        <div className="team-empty-sub">Click "+ Add Teammate" to start building your payroll registry.</div>
+                        <div className="team-empty-sub">Manage your remote workforce directory here. Add team members to easily select them when building batch payrolls.</div>
                         <button className="btn btn-primary btn-sm" onClick={() => setModalTeamOpen(true)}>Add your first teammate</button>
                       </div>
                     ) : (
@@ -2208,7 +2163,7 @@ export default function App() {
                       
                       {batchWorkers.length === 0 ? (
                         <div style={{ padding: "20px", textAlign: "center", color: "var(--ink-mute)", fontStyle: "italic" }}>
-                          No workers added to the current batch list. Fill the form to append.
+                          Stage multiple payroll deposits off-chain, then execute them all at once in a single cost-effective Stellar transaction. No workers added yet.
                         </div>
                       ) : (
                         <div style={{ display: "grid", gap: "8px" }}>
@@ -2817,10 +2772,19 @@ export default function App() {
             )}
 
             <div className="modal-actions">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModalVaultOpen(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary btn-sm" disabled={sending}>
-                Deploy Vault
-              </button>
+              {vaultTxStatus.type === "success" ? (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => {
+                  setModalVaultOpen(false);
+                  setActiveSidebarView("vault");
+                }}>Go to Vault</button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModalVaultOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={sending}>
+                    Deploy Vault
+                  </button>
+                </>
+              )}
             </div>
           </form>
         </div>
@@ -2910,11 +2874,13 @@ export default function App() {
               <button className="btn btn-primary btn-sm" onClick={() => {
                 if (drawerVault.id.startsWith("C")) {
                   setVaultId(drawerVault.id);
+                  setCustomVaultId(drawerVault.id);
                   setUseCustomVault(true);
                   setDrawerOpen(false);
                   toast(`Routed active workspace to Vault: ${shorten(drawerVault.id)}`);
                   void loadVaultState();
                 } else {
+                  setVaultId(VAULT_CONTRACT_ID);
                   setUseCustomVault(false);
                   setDrawerOpen(false);
                   toast(`Routed active workspace to Default System Vault`);
