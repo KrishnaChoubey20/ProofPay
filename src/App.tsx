@@ -357,7 +357,9 @@ export default function App() {
       );
       
       setMyAvailableVaults(results);
-      if (results.length > 0 && !customVaultId) {
+      
+      const currentAdminVault = await getVaultFromFactory(stellarWallet.address);
+      if (results.length > 0 && !currentAdminVault) {
         if (!window.location.hash || window.location.hash === "#/employer/overview") {
           window.location.hash = "#/worker/claims";
         }
