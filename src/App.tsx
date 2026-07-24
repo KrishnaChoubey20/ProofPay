@@ -157,6 +157,29 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVault, setDrawerVault] = useState<any>(null);
 
+  // --- HASH ROUTING ---
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (!hash) return;
+      
+      const parts = hash.replace("#/", "").split("/");
+      if (parts.length === 2) {
+        const [role, view] = parts;
+        if (["employer", "worker", "verifier"].includes(role)) {
+          setUserRole(role as "employer" | "worker" | "verifier");
+        }
+        if (["overview", "vaults", "team", "batch", "claims", "proofs", "portal", "settings"].includes(view)) {
+          setActiveSidebarView(view);
+        }
+      }
+    };
+    
+    window.addEventListener("hashchange", handleHashChange);
+    handleHashChange(); // process on mount
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
   // Teammates state
   const [teamList, setTeamList] = useState<{ name: string; role: string; rate: string; vault: string; status: string }[]>([]);
 
@@ -296,6 +319,9 @@ export default function App() {
       const resolvedVault = await getVaultFromFactory(stellarWallet.address);
       if (resolvedVault) {
         setCustomVaultId(resolvedVault);
+        if (!window.location.hash || window.location.hash === "#/worker/claims") {
+          window.location.hash = "#/employer/overview";
+        }
         setUserRole("employer");
       } else {
         setCustomVaultId(null);
@@ -332,6 +358,9 @@ export default function App() {
       
       setMyAvailableVaults(results);
       if (results.length > 0 && !customVaultId) {
+        if (!window.location.hash || window.location.hash === "#/employer/overview") {
+          window.location.hash = "#/worker/claims";
+        }
         setUserRole("worker");
       }
     } catch (e) {
@@ -1609,49 +1638,49 @@ export default function App() {
               <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "2px" }}>
                 {userRole === "employer" && (
                   <>
-                    <button className={`side-link ${activeSidebarView === "overview" ? "active" : ""}`} onClick={() => setActiveSidebarView("overview")}>
+                    <a href="#/employer/overview" className={`side-link ${activeSidebarView === "overview" ? "active" : ""}`}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/></svg>
                       Overview
-                    </button>
-                    <button className={`side-link ${activeSidebarView === "vaults" ? "active" : ""}`} onClick={() => setActiveSidebarView("vaults")}>
+                    </a>
+                    <a href="#/employer/vaults" className={`side-link ${activeSidebarView === "vaults" ? "active" : ""}`}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
                       Vault Registry
-                    </button>
-                    <button className={`side-link ${activeSidebarView === "team" ? "active" : ""}`} onClick={() => setActiveSidebarView("team")}>
+                    </a>
+                    <a href="#/employer/team" className={`side-link ${activeSidebarView === "team" ? "active" : ""}`}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="9" cy="8" r="3"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/><circle cx="17" cy="7" r="2.4"/><path d="M22 21c0-2.9-1.8-5.3-4.4-6.3"/></svg>
                       Teammates
-                    </button>
-                    <button className={`side-link ${activeSidebarView === "batch" ? "active" : ""}`} onClick={() => setActiveSidebarView("batch")}>
+                    </a>
+                    <a href="#/employer/batch" className={`side-link ${activeSidebarView === "batch" ? "active" : ""}`}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="9" x2="15" y2="9" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="13" y2="17" /></svg>
                       Batch Builder
-                    </button>
+                    </a>
                   </>
                 )}
 
                 {userRole === "worker" && (
                   <>
-                    <button className={`side-link ${activeSidebarView === "claims" ? "active" : ""}`} onClick={() => setActiveSidebarView("claims")}>
+                    <a href="#/worker/claims" className={`side-link ${activeSidebarView === "claims" ? "active" : ""}`}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
                       Claim Center
-                    </button>
-                    <button className={`side-link ${activeSidebarView === "proofs" ? "active" : ""}`} onClick={() => setActiveSidebarView("proofs")}>
+                    </a>
+                    <a href="#/worker/proofs" className={`side-link ${activeSidebarView === "proofs" ? "active" : ""}`}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3l7 3v6c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
                       Income Proofs
-                    </button>
+                    </a>
                   </>
                 )}
 
                 {userRole === "verifier" && (
-                  <button className={`side-link ${activeSidebarView === "portal" ? "active" : ""}`} onClick={() => setActiveSidebarView("portal")}>
+                  <a href="#/verifier/portal" className={`side-link ${activeSidebarView === "portal" ? "active" : ""}`}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
                     Verifier Portal
-                  </button>
+                  </a>
                 )}
 
-                <button className={`side-link ${activeSidebarView === "settings" ? "active" : ""}`} onClick={() => setActiveSidebarView("settings")}>
+                <a href={`#/${userRole}/settings`} className={`side-link ${activeSidebarView === "settings" ? "active" : ""}`}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.6-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.9.3H9A1.7 1.7 0 0010 3.6V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.9V9c.2.7.8 1.2 1.6 1.2H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
                   Settings
-                </button>
+                </a>
               </div>
             </nav>
 
