@@ -33,6 +33,7 @@ pub enum ContractError {
     NotAuthorized       = 4,
     NothingToClaim      = 5,
     InvalidAmount       = 6,
+    AlreadyAllocated    = 7,
 }
 
 // ── Struct types ──────────────────────────────────────────────────────────────
@@ -344,6 +345,81 @@ impl ProofPayVault {
             end_time,
         }
         .publish(&env);
+
+        Ok(())
+    }
+
+    // ── create_batch_stream ─────────────────────────────────────────────
+    /// Creates multiple streams from the employer to multiple workers in one call.
+    pub fn create_batch_stream(
+        env: Env,
+        from: Address,
+        workers: soroban_sdk::Vec<Address>,
+        amounts: soroban_sdk::Vec<i128>,
+        start_time: u64,
+        end_time: u64,
+    ) -> Result<(), ContractError> {
+        from.require_auth();
+
+        if workers.len() != amounts.len() {
+            return Err(ContractError::InvalidAmount);
+        }
+        if start_time >= end_time {
+            return Err(ContractError::InvalidAmount);
+        }
+        if end_time <= env.ledger().timestamp() {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        let mut total_amount: i128 = 0;
+        for i in 0..amounts.len() {
+            let amount = amounts.get(i).unwrap();
+            if amount <= 0 {
+                return Err(ContractError::InvalidAmount);
+            }
+            total_amount += amount;
+        }
+
+        let token_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::NativeToken)
+            .unwrap();
+        let native_token = token::Client::new(&env, &token_addr);
+
+        native_token.transfer(&from, &env.current_contract_address(), &total_amount);
+
+        for i in 0..workers.len() {
+            let worker = workers.get(i).unwrap();
+            let amount = amounts.get(i).unwrap();
+            
+            let key = DataKey::Stream(worker.clone());
+            if env.storage().persistent().has(&key) {
+                return Err(ContractError::AlreadyAllocated);
+            }
+
+            let new_stream = PayrollStream {
+                sender: from.clone(),
+                total_amount: amount,
+                start_time,
+                end_time,
+                claimed_amount: 0,
+            };
+
+            env.storage().persistent().set(&key, &new_stream);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        }
+
+        let current_total: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalDeposited)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalDeposited, &(current_total + total_amount));
 
         Ok(())
     }

@@ -26,9 +26,8 @@ export const rpc = new StellarSdk.rpc.Server(
   "https://soroban-testnet.stellar.org"
 );
 
-// ── Factory & Vault contract IDs ─────────────────────────────────────────────
-export const FACTORY_CONTRACT_ID = (import.meta as any).env.VITE_FACTORY_CONTRACT_ID || "CB4APYC7KJRCXO2AH6SLYNB3FSUZYBIYW2J47S4JXI6ILNQ7TX6X4RFX";
-export const VAULT_CONTRACT_ID = (import.meta as any).env.VITE_VAULT_CONTRACT_ID || "CDHJGGDSEOTXHNYV7Y2CQYU5CX3CV4ZOB5EDWDO4QPYHAKNWUPNYNPJQ";
+// ── Global Vault Contract ID ─────────────────────────────────────────────
+export const VAULT_CONTRACT_ID = (import.meta as any).env.VITE_VAULT_CONTRACT_ID || "CCOQVDUZXNMXZGZRBOLVVHM2NGPD3NTT27UL6CJLOAMWRRFMVCW7P6GC";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -131,6 +130,35 @@ export async function buildPayrollPaymentXdr({
   return transaction.toXDR();
 }
 
+// ── Add USDC Trustline ───────────────────────────────────────────────────────
+
+export const USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+
+export async function buildAddUsdcTrustlineXdr(sourceAddress: string) {
+  const account = await horizon.loadAccount(sourceAddress);
+  const usdcAsset = new StellarSdk.Asset("USDC", USDC_ISSUER);
+
+  const transaction = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(StellarSdk.Operation.changeTrust({ asset: usdcAsset }))
+    .setTimeout(180)
+    .build();
+  return transaction.toXDR();
+}
+
+export async function hasUsdcTrustline(address: string): Promise<boolean> {
+  try {
+    const account = await horizon.loadAccount(address);
+    return account.balances.some(
+      (b: any) => b.asset_code === "USDC" && b.asset_issuer === USDC_ISSUER
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function submitSignedTransaction(signedXdr: string) {
   const transaction = StellarSdk.TransactionBuilder.fromXDR(
     signedXdr,
@@ -224,64 +252,7 @@ export async function submitSorobanTx(signedXdr: string): Promise<{
   throw new Error(`Transaction timed out after 60 s. Hash: ${hash}`);
 }
 
-// ── Factory operations ────────────────────────────────────────────────────────
 
-export async function getVaultFromFactory(
-  adminAddress: string,
-  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
-): Promise<string | null> {
-  try {
-    const account = await rpc.getAccount(sourceAddress);
-    const contract = new StellarSdk.Contract(FACTORY_CONTRACT_ID);
-    const tx = new StellarSdk.TransactionBuilder(account, {
-      fee: "100000",
-      networkPassphrase: NETWORK_PASSPHRASE,
-    })
-      .addOperation(contract.call("get_vault", addressArg(adminAddress)))
-      .setTimeout(30)
-      .build();
-
-    const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
-      const success = simulation as SimulationSuccess;
-      if (success.result) {
-        const val = success.result.retval;
-        const native = StellarSdk.scValToNative(val);
-        return native ? String(native) : null;
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export async function buildDeployVaultXdr(
-  sourceAddress: string,
-  vaultAdmin: string,
-  nativeTokenAddress: string,
-  saltHex?: string
-): Promise<string> {
-  let saltBytes = new Uint8Array(32);
-  if (saltHex) {
-    const matches = saltHex.match(/.{1,2}/g);
-    if (matches) {
-      const bytes = new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
-      saltBytes.set(bytes.slice(0, 32));
-    }
-  }
-  const salt = StellarSdk.xdr.ScVal.scvBytes(Buffer.from(saltBytes.buffer));
-  return invokeContract(
-    sourceAddress,
-    FACTORY_CONTRACT_ID,
-    "deploy_vault",
-    [
-      addressArg(vaultAdmin),
-      addressArg(nativeTokenAddress),
-      salt,
-    ]
-  );
-}
 
 // ── Vault query/view helpers ─────────────────────────────────────────────────
 
@@ -511,6 +482,47 @@ export async function buildCreateStreamXdr(
   );
 }
 
+export async function buildBatchCreateStreamXdr(
+  sourceAddress: string,
+  vaultId: string,
+  streams: { worker: string; amountXlm: string }[],
+  startTimeSeconds: number,
+  endTimeSeconds: number
+): Promise<string> {
+  const account = await rpc.getAccount(sourceAddress);
+  const contract = new StellarSdk.Contract(vaultId);
+
+  let txBuilder = new StellarSdk.TransactionBuilder(account, {
+    fee: String(10_000_000 * streams.length), // Scale fee limit with operations
+    networkPassphrase: NETWORK_PASSPHRASE,
+  });
+
+  const workerAddresses = streams.map(s => StellarSdk.Address.fromString(s.worker).toScVal());
+  const workerAmounts = streams.map(s => xlmToStroopsArg(s.amountXlm));
+
+  txBuilder.addOperation(
+    contract.call(
+      "create_batch_stream",
+      addressArg(sourceAddress),
+      StellarSdk.xdr.ScVal.scvVec(workerAddresses),
+      StellarSdk.xdr.ScVal.scvVec(workerAmounts),
+      StellarSdk.nativeToScVal(BigInt(startTimeSeconds), { type: "u64" }),
+      StellarSdk.nativeToScVal(BigInt(endTimeSeconds), { type: "u64" })
+    )
+  );
+
+  let tx = txBuilder.setTimeout(180).build();
+  
+  // Simulate to get resource estimates and attach auth
+  const simulation = await rpc.simulateTransaction(tx);
+  if (StellarSdk.rpc.Api.isSimulationError(simulation)) {
+    throw new Error(`Batch simulation failed: ${(simulation as any).error}`);
+  }
+
+  const assembledTx = StellarSdk.rpc.assembleTransaction(tx, simulation).build();
+  return assembledTx.toXDR();
+}
+
 export async function buildClaimStreamXdr(
   sourceAddress: string,
   vaultId: string
@@ -561,7 +573,7 @@ export function streamContractEvents(
     try {
       const ledgerInfo = await rpc.getLatestLedger();
       const endLedger = ledgerInfo.sequence;
-      const startLedger = lastLedger > 0 ? lastLedger : Math.max(1, endLedger - 200);
+      const startLedger = lastLedger > 0 ? lastLedger : Math.max(1, endLedger - 2880); // Look back ~4 hours
 
       if (startLedger >= endLedger) {
         if (running) setTimeout(poll, intervalMs);
@@ -664,36 +676,8 @@ export function streamContractEvents(
   };
 }
 
-export async function getAllVaultsFromFactory(
-  sourceAddress: string = "GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3"
-): Promise<string[]> {
-  try {
-    const account = await rpc.getAccount(sourceAddress);
-    const contract = new StellarSdk.Contract(FACTORY_CONTRACT_ID);
-    const tx = new StellarSdk.TransactionBuilder(account, {
-      fee: "100000",
-      networkPassphrase: NETWORK_PASSPHRASE,
-    })
-      .addOperation(contract.call("get_all_vaults"))
-      .setTimeout(30)
-      .build();
 
-    const simulation = await rpc.simulateTransaction(tx);
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simulation)) {
-      const success = simulation as SimulationSuccess;
-      if (success.result) {
-        const val = success.result.retval;
-        const native = StellarSdk.scValToNative(val) as string[];
-        if (Array.isArray(native)) {
-          return native.map((addr) => String(addr));
-        }
-      }
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
+
 
 export async function buildCreateBatchXdr(
   sourceAddress: string,

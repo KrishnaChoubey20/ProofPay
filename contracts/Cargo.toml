@@ -1,8 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "payroll-vault",
-    "payroll-factory"
+    "payroll-vault"
 ]
 
 [profile.release]

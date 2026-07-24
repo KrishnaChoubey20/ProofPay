@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, FormEvent } from "react";
+import React, { useCallback, useEffect, useState, useRef, FormEvent } from "react";
 import { useStellarWallet, WalletError, WalletErrorType } from "./hooks/useStellarWallet";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import {
@@ -13,15 +13,12 @@ import {
   getVaultTotalDeposited,
   streamContractEvents,
   VAULT_CONTRACT_ID,
-  FACTORY_CONTRACT_ID,
-  getVaultFromFactory,
-  getAllVaultsFromFactory,
-  buildDeployVaultXdr,
   getScheduledAllocations,
   getStreamDetails,
   buildDepositScheduledXdr,
   buildClaimScheduledXdr,
   buildCreateStreamXdr,
+  buildBatchCreateStreamXdr,
   buildClaimStreamXdr,
   buildCreateBatchXdr,
   buildClaimBatchPayoutXdr,
@@ -32,6 +29,8 @@ import {
   getVaultTokenAddress,
   VaultEvent,
   PayrollBatchUI,
+  buildAddUsdcTrustlineXdr,
+  hasUsdcTrustline,
 } from "./lib/stellar";
 import {
   addressArg,
@@ -169,7 +168,7 @@ export default function App() {
         if (["employer", "worker", "verifier"].includes(role)) {
           setUserRole(role as "employer" | "worker" | "verifier");
         }
-        if (["overview", "vaults", "team", "batch", "claims", "proofs", "portal", "settings"].includes(view)) {
+        if (["overview", "vaults", "team", "batch", "claims", "proofs", "portal", "settings", "history"].includes(view)) {
           setActiveSidebarView(view);
         }
       }
@@ -185,6 +184,7 @@ export default function App() {
 
   // Dynamic Vault states
   const [customVaultId, setCustomVaultId] = useState<string | null>(null);
+  const [isCheckingVault, setIsCheckingVault] = useState(true);
   const [useCustomVault, setUseCustomVault] = useState(false);
   const [vaultId, setVaultId] = useState(VAULT_CONTRACT_ID);
   const [vaultIdInput, setVaultIdInput] = useState("");
@@ -192,6 +192,8 @@ export default function App() {
 
   // Send Payroll Panel states
   const [recipient, setRecipient] = useState("");
+  const [batchRecipients, setBatchRecipients] = useState([{ address: "", amount: "1" }]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [amount, setAmount] = useState("1");
   const [memo, setMemo] = useState("ProofPay payroll test");
   const [txStatus, setTxStatus] = useState<TransactionStatus>({ type: "idle" });
@@ -268,6 +270,7 @@ export default function App() {
   const [sealAmount, setSealAmount] = useState(812.4);
 
   const walletReady = Boolean(stellarWallet.connected && stellarWallet.address);
+  const [roleSelectionModalOpen, setRoleSelectionModalOpen] = useState(false);
   const activeError = localError || stellarWallet.error;
 
   // Custom toast notification helper
@@ -312,63 +315,6 @@ export default function App() {
     }
   }, [useCustomVault, customVaultId]);
 
-  // Fetch admin's custom vault from factory
-  const checkCustomVault = useCallback(async () => {
-    if (!stellarWallet.address) return;
-    try {
-      const resolvedVault = await getVaultFromFactory(stellarWallet.address);
-      if (resolvedVault) {
-        setCustomVaultId(resolvedVault);
-        if (!window.location.hash || window.location.hash === "#/worker/claims") {
-          window.location.hash = "#/employer/overview";
-        }
-        setUserRole("employer");
-      } else {
-        setCustomVaultId(null);
-      }
-    } catch (e) {
-      console.error("Failed to fetch custom vault", e);
-    }
-  }, [stellarWallet.address]);
-
-  // Scan all deployed vaults on-chain for active payroll allocations matching the connected address
-  const scanVaultsForPayroll = useCallback(async () => {
-    if (!stellarWallet.address) return;
-    try {
-      const allVaults = await getAllVaultsFromFactory(stellarWallet.address);
-      const results: { address: string; hasStream: boolean; hasScheduled: boolean }[] = [];
-      const vaultsToCheck = Array.from(new Set([VAULT_CONTRACT_ID, ...allVaults]));
-      
-      await Promise.all(
-        vaultsToCheck.map(async (vAddr) => {
-          try {
-            const stream = await getStreamDetails(vAddr, stellarWallet.address!);
-            const hasStream = Boolean(stream && BigInt(stream.totalAmount) > 0n);
-            const sched = await getScheduledAllocations(vAddr, stellarWallet.address!);
-            const hasScheduled = Boolean(sched && sched.length > 0 && sched.some(s => BigInt(s.amount) > 0n));
-            
-            if (hasStream || hasScheduled) {
-              results.push({ address: vAddr, hasStream, hasScheduled });
-            }
-          } catch {
-            // ignore check failure for an individual vault
-          }
-        })
-      );
-      
-      setMyAvailableVaults(results);
-      
-      const currentAdminVault = await getVaultFromFactory(stellarWallet.address);
-      if (results.length > 0 && !currentAdminVault) {
-        if (!window.location.hash || window.location.hash === "#/employer/overview") {
-          window.location.hash = "#/worker/claims";
-        }
-        setUserRole("worker");
-      }
-    } catch (e) {
-      console.error("Failed to scan vaults for payroll", e);
-    }
-  }, [stellarWallet.address]);
 
   // Load native and USDC balances
   const loadBalance = useCallback(async () => {
@@ -451,10 +397,8 @@ export default function App() {
   // Run initial lookup and status setup
   useEffect(() => {
     if (walletReady) {
-      void checkCustomVault();
       void loadBalance();
       void loadVaultState();
-      void scanVaultsForPayroll();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletReady]);
@@ -465,10 +409,9 @@ export default function App() {
     const interval = setInterval(() => {
       void loadBalance();
       void loadVaultState();
-      void scanVaultsForPayroll();
     }, 6000);
     return () => clearInterval(interval);
-  }, [walletReady, loadBalance, loadVaultState, scanVaultsForPayroll]);
+  }, [walletReady, loadBalance, loadVaultState]);
 
   // Live streaming ticker for streaming payroll claims
   useEffect(() => {
@@ -532,7 +475,7 @@ export default function App() {
   useEffect(() => {
     if (!walletReady) return;
 
-    const channels = [VAULT_CONTRACT_ID, FACTORY_CONTRACT_ID];
+    const channels = [VAULT_CONTRACT_ID];
     if (customVaultId) {
       channels.push(customVaultId);
     }
@@ -561,18 +504,7 @@ export default function App() {
   };
 
   async function connectWallet() {
-    setSending(true);
-    clearErrors();
-    try {
-      await stellarWallet.connect();
-      if (!window.location.hash || window.location.hash === "#/") {
-        setRoleSelectionModalOpen(true);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setSending(false);
-    }
+    setRoleSelectionModalOpen(true);
   }
 
   function disconnectWallet() {
@@ -609,91 +541,7 @@ export default function App() {
     }
   }
 
-  // Deploy dynamic vault via Factory
-  async function deployDynamicVault() {
-    if (sending) return;
-    clearErrors();
-    if (!stellarWallet.address) return;
 
-    setSending(true);
-    setVaultTxStatus({
-      type: "pending",
-      title: "Building Deploy Tx",
-      message: "Simulating on-chain vault deployment via ProofPay Factory…",
-    });
-
-    try {
-      let tokenAddress = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
-      if (deployedTokenType === "USDC") {
-        tokenAddress = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
-      } else if (deployedTokenType === "CUSTOM") {
-        const trimmed = customTokenSAC.trim();
-        if (!trimmed || trimmed.length !== 56 || !trimmed.startsWith("C")) {
-          throw new Error("Enter a valid custom token contract ID starting with C.");
-        }
-        tokenAddress = trimmed;
-      }
-
-      const randomSaltHex = Array.from({ length: 32 }, () =>
-        Math.floor(Math.random() * 256).toString(16).padStart(2, "0")
-      ).join("");
-
-      const xdr = await buildDeployVaultXdr(
-        stellarWallet.address,
-        stellarWallet.address,
-        tokenAddress,
-        randomSaltHex
-      );
-
-      setVaultTxStatus({
-        type: "pending",
-        title: "Signing deployment",
-        message: "Sign the transaction to initialize your custom dynamic vault…",
-      });
-
-      const signedXdr = await stellarWallet.sign(xdr);
-
-      setVaultTxStatus({
-        type: "pending",
-        title: "Deploying vault",
-        message: "Broadcasting transaction to Testnet…",
-      });
-
-      const result = await submitSorobanTx(signedXdr);
-
-      // Extract vault address from return value
-      let newVaultAddress = "";
-      if (result.returnValue) {
-        newVaultAddress = String(StellarSdk.scValToNative(result.returnValue));
-      }
-
-      setVaultTxStatus({
-        type: "success",
-        title: "Dynamic Vault Deployed!",
-        message: `Successfully deployed your custom vault at address: ${newVaultAddress}`,
-        hash: result.hash,
-        ledger: result.ledger,
-      });
-
-      await checkCustomVault();
-      setUseCustomVault(true);
-      if (newVaultAddress) {
-        setMyAvailableVaults(prev => [...prev, { address: newVaultAddress, hasStream: false, hasScheduled: false }]);
-      }
-      await loadBalance();
-    } catch (error) {
-      const errKind = getWalletErrorKind(error);
-      const walletErr = error instanceof WalletError ? error : new WalletError(errKind, friendlyErr(error));
-      setLocalError(walletErr);
-      setVaultTxStatus({
-        type: "error",
-        title: "Deployment Failed",
-        message: walletErr.message,
-      });
-    } finally {
-      setSending(false);
-    }
-  }
 
   // Load saved batches for this vault from localStorage
   useEffect(() => {
@@ -1080,6 +928,31 @@ export default function App() {
     }
   }
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      if (!text) return;
+      const lines = text.split('\n');
+      const parsed = lines.map(line => {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          return { address: parts[0].trim(), amount: parts[1].trim() };
+        }
+        return null;
+      }).filter(Boolean) as { address: string; amount: string }[];
+      
+      if (parsed.length > 0) {
+        setBatchRecipients(parsed);
+      }
+    };
+    reader.readAsText(file);
+    // Reset input so the same file can be uploaded again if needed
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   // Soroban vault deposits (handles standard, scheduled, and streaming)
   async function depositToVault(e: FormEvent) {
     e.preventDefault();
@@ -1223,9 +1096,11 @@ export default function App() {
   }
 
   // Soroban claims (instant, scheduled, and streaming)
-  async function claimFromVault() {
+  async function claimFromVault(overrideType?: string) {
     if (sending) return;
     clearErrors();
+
+    const ct = overrideType || claimType;
 
     if (!stellarWallet.address) {
       setVaultTxStatus({
@@ -1248,14 +1123,33 @@ export default function App() {
     setSending(true);
     setVaultTxStatus({
       type: "pending",
-      title: "Simulating claim",
-      message: `Estimating resources for claiming your ${claimType} payroll allocation…`,
+      title: "Checking USDC trustline",
+      message: "Verifying your wallet can receive USDC tokens…",
     });
 
     try {
+      // ── Ensure the worker has a USDC trustline before claiming ──
+      const hasTrustline = await hasUsdcTrustline(stellarWallet.address);
+      if (!hasTrustline) {
+        setVaultTxStatus({
+          type: "pending",
+          title: "USDC Trustline Required",
+          message: "Your wallet needs a USDC trustline. Please sign the trustline transaction…",
+        });
+        const trustXdr = await buildAddUsdcTrustlineXdr(stellarWallet.address);
+        const signedTrustXdr = await stellarWallet.sign(trustXdr);
+        await submitSignedTransaction(signedTrustXdr);
+        toast("✓ USDC trustline added successfully!");
+        setVaultTxStatus({
+          type: "pending",
+          title: "Trustline added",
+          message: "Now proceeding to claim your payroll…",
+        });
+      }
+
       let xdr = "";
 
-      if (claimType === "instant") {
+      if (ct === "instant") {
         if (workerAllocation <= 0n) {
           throw new Error("You do not have any claimable allocation in the vault.");
         }
@@ -1266,13 +1160,13 @@ export default function App() {
           "claim",
           args
         );
-      } else if (claimType === "scheduled") {
+      } else if (ct === "scheduled") {
         const hasUnlocked = scheduledAllocations.some((item) => !item.locked);
         if (!hasUnlocked) {
           throw new Error("No unlocked scheduled allocations found for your wallet.");
         }
         xdr = await buildClaimScheduledXdr(stellarWallet.address, vaultId);
-      } else if (claimType === "streaming") {
+      } else if (ct === "streaming") {
         if (liveStreamClaimable <= 0n) {
           throw new Error("No claimable streaming funds accrued yet.");
         }
@@ -1581,7 +1475,7 @@ export default function App() {
                 </div>
                 <div className="ppl-tech-rows">
                   <div className="ppl-tech-row"><span>Network</span><span>Stellar · Testnet</span></div>
-                  <div className="ppl-tech-row"><span>Factory contract</span><span>{shorten(FACTORY_CONTRACT_ID, 8, 12)}</span></div>
+
                   <div className="ppl-tech-row"><span>Default vault</span><span>{shorten(VAULT_CONTRACT_ID, 8, 12)}</span></div>
                   <div className="ppl-tech-row"><span>Wallets supported</span><span>Freighter · xBull · Albedo</span></div>
                 </div>
@@ -1617,6 +1511,43 @@ export default function App() {
       )}
 
       {/* ══ DASHBOARD PAGE ══ */}
+      {roleSelectionModalOpen && (
+        <div className="modal-backdrop open" style={{ zIndex: 9999 }}>
+          <div className="modal" style={{ textAlign: "center", padding: "40px" }}>
+            <h2 style={{ marginBottom: "10px" }}>How do you want to use ProofPay?</h2>
+            <p style={{ color: "var(--ink-mute)", marginBottom: "30px" }}>Choose your workspace to continue.</p>
+            <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
+              <button className="btn btn-primary" style={{ flex: 1, padding: "24px 16px", fontSize: "1.15rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", whiteSpace: "nowrap", borderRadius: "12px" }} onClick={async () => {
+                setRoleSelectionModalOpen(false);
+                setSending(true);
+                clearErrors();
+                try {
+                  await stellarWallet.connect();
+                  setUserRole("employer");
+                  window.location.hash = "#/employer/overview";
+                } catch(e) { console.error(e); } finally { setSending(false); }
+              }}>
+                <span style={{ fontSize: "2rem" }}>💼</span>
+                I'm an Employer
+              </button>
+              <button className="btn btn-secondary" style={{ flex: 1, padding: "24px 16px", fontSize: "1.15rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", whiteSpace: "nowrap", borderRadius: "12px", background: "rgba(20,17,13,0.05)", color: "var(--ink-body)", border: "1px solid rgba(20,17,13,0.1)" }} onClick={async () => {
+                setRoleSelectionModalOpen(false);
+                setSending(true);
+                clearErrors();
+                try {
+                  await stellarWallet.connect();
+                  setUserRole("worker");
+                  window.location.hash = "#/worker/claims";
+                } catch(e) { console.error(e); } finally { setSending(false); }
+              }}>
+                <span style={{ fontSize: "2rem" }}>👷</span>
+                I'm a Worker
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {walletReady && (
         <div className="dashboard-container">
           <aside className={`sidebar ${sidebarOpen ? "open" : ""}`} id="sidebar">
@@ -1647,6 +1578,7 @@ export default function App() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/></svg>
                         Send Payroll
                       </a>
+                      
                     </>
                   )}
 
@@ -1656,8 +1588,13 @@ export default function App() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
                         Claim Salary
                       </a>
+                      <a href="#/worker/history" className={`side-link ${activeSidebarView === "history" ? "active" : ""}`}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Tx History
+                      </a>
                     </>
                   )}
+
 
                 
 
@@ -1787,17 +1724,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <div className="top-actions">
-                <div className="search">
-                  <span>⌕</span>
-                  <input type="text" placeholder="Search vaults, claims, tx..." />
-                </div>
-                {userRole === "employer" && (
-                  <button className="btn btn-primary btn-sm" onClick={() => setModalVaultOpen(true)}>
-                    + Deploy Vault
-                  </button>
-                )}
-              </div>
+
             </div>
 
             <div className="page">
@@ -1810,37 +1737,28 @@ export default function App() {
                         <h2>Send Payroll</h2>
                       </div>
                       <div className="panel-body">
-                        {!customVaultId ? (
-                          <div style={{ textAlign: "center", padding: "40px 0" }}>
-                            <h3>Setup Required</h3>
-                            <p style={{ color: "var(--ink-mute)", marginBottom: "20px" }}>You need to deploy a payroll vault to send payments.</p>
-                            <button className="btn btn-primary" onClick={deployDynamicVault} disabled={sending}>
-                              {sending ? "Deploying..." : "Deploy Vault Now"}
-                            </button>
-                          </div>
-                        ) : (
-                          <form onSubmit={async (e) => {
+                        <form onSubmit={async (e) => {
                             e.preventDefault();
-                            if (!stellarWallet.address || !customVaultId) return;
+                            if (!stellarWallet.address) return;
                             setSending(true);
-                            setTxStatus({ type: "pending", title: "Sending Payment", message: "Awaiting wallet signature..." });
+                            setTxStatus({ type: "pending", title: "Sending Batch", message: "Awaiting wallet signature..." });
                             try {
-                              const amtStr = BigInt(Math.floor(parseFloat(amount) * 1e7)).toString();
-                              // Hardcoded to send a streaming payment for simplicity in the demo
-                              const xdr = await buildCreateStreamXdr(
+                              const streams = batchRecipients.map(r => ({
+                                worker: r.address,
+                                amountXlm: r.amount
+                              }));
+                              const xdr = await buildBatchCreateStreamXdr(
                                 stellarWallet.address,
-                                customVaultId,
-                                recipient,
-                                amtStr,
+                                vaultId,
+                                streams,
                                 Math.floor(Date.now() / 1000) - 10,
-                                Math.floor(Date.now() / 1000) + 3600 // 1 hour stream
+                                Math.floor(Date.now() / 1000) + 3600 * 24 * 30 // 1 month default stream for batch
                               );
-                              const signed = await stellarWallet.signTransaction(xdr);
+                              const signed = await stellarWallet.sign(xdr);
                               setTxStatus({ type: "pending", title: "Confirming", message: "Submitting to Stellar..." });
                               const result = await submitSorobanTx(signed);
-                              setTxStatus({ type: "success", title: "Payment Sent!", message: "Successfully started streaming payroll.", hash: result.hash });
-                              setAmount("");
-                              setRecipient("");
+                              setTxStatus({ type: "success", title: "Batch Sent!", message: `Successfully started ${streams.length} streaming payrolls.`, hash: result.hash });
+                              setBatchRecipients([{ address: "", amount: "1" }]);
                               await loadVaultState();
                             } catch (error) {
                               setTxStatus({ type: "error", title: "Failed", message: friendlyErr(error) });
@@ -1848,230 +1766,350 @@ export default function App() {
                               setSending(false);
                             }
                           }} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                            <div>
-                              <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>Worker Address</label>
-                              <input type="text" className="input" placeholder="G..." value={recipient} onChange={e => setRecipient(e.target.value)} required />
+                            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                              {batchRecipients.map((recip, idx) => (
+                                <div key={idx} style={{ display: "flex", gap: "12px", alignItems: "flex-end", background: "var(--paper-panel)", padding: "16px", borderRadius: "12px", border: "1px solid var(--paper-line-strong)" }}>
+                                  <div className="field" style={{ flex: 2, marginBottom: 0 }}>
+                                    <label>Worker {idx + 1} Address</label>
+                                    <input type="text" placeholder="G..." value={recip.address} onChange={e => {
+                                      const updated = [...batchRecipients];
+                                      updated[idx].address = e.target.value;
+                                      setBatchRecipients(updated);
+                                    }} required />
+                                  </div>
+                                  <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label>Amount (USDC)</label>
+                                    <input type="number" step="0.01" placeholder="100.00" value={recip.amount} onChange={e => {
+                                      const updated = [...batchRecipients];
+                                      updated[idx].amount = e.target.value;
+                                      setBatchRecipients(updated);
+                                    }} required />
+                                  </div>
+                                  {batchRecipients.length > 1 && (
+                                    <button type="button" onClick={() => {
+                                      setBatchRecipients(batchRecipients.filter((_, i) => i !== idx));
+                                    }} style={{ background: "rgba(235, 87, 87, 0.1)", color: "#eb5757", border: "none", padding: "10px", borderRadius: "8px", cursor: "pointer", height: "40px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                            <div>
-                              <label style={{ display: "block", marginBottom: "8px", fontWeight: 500 }}>Amount (USDC)</label>
-                              <input type="number" step="0.01" className="input" placeholder="100.00" value={amount} onChange={e => setAmount(e.target.value)} required />
+                            <div style={{ display: "flex", gap: "12px", alignItems: "center", alignSelf: "flex-start" }}>
+                              <button type="button" className="btn btn-ghost" style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "6px" }} onClick={() => setBatchRecipients([...batchRecipients, { address: "", amount: "1" }])}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add Worker
+                              </button>
+                              <button type="button" className="btn btn-ghost" style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "6px", color: "var(--vault)" }} onClick={() => fileInputRef.current?.click()}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                Upload CSV
+                              </button>
+                              <input type="file" accept=".csv" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
                             </div>
-                            <button type="submit" className="btn btn-primary" disabled={sending}>
-                              {sending ? "Sending..." : "Send Streaming Payment"}
+                            
+                            {txStatus.type !== "idle" && (
+                              <div className={`tx-status-box ${txStatus.type}`} style={{ marginTop: "12px", marginBottom: "4px", padding: "12px", borderRadius: "8px", background: txStatus.type === 'error' ? 'rgba(235, 87, 87, 0.1)' : txStatus.type === 'success' ? 'rgba(39, 174, 96, 0.1)' : 'var(--paper-panel)' }}>
+                                <div style={{ fontWeight: 600, color: txStatus.type === 'error' ? '#eb5757' : txStatus.type === 'success' ? '#27ae60' : 'var(--ink)' }}>{txStatus.title}</div>
+                                <div style={{ fontSize: "0.9rem", color: txStatus.type === 'error' ? '#eb5757' : 'var(--ink-mute)', marginTop: "4px" }}>
+                                  {txStatus.message}
+                                </div>
+                                {txStatus.type === 'success' && txStatus.hash && (
+                                  <a
+                                    href={`https://stellar.expert/explorer/testnet/tx/${txStatus.hash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ fontSize: "0.85rem", color: "#27ae60", textDecoration: "underline", display: "inline-block", marginTop: "6px" }}
+                                  >
+                                    View transaction on Stellar Expert ↗
+                                  </a>
+                                )}
+                              </div>
+
+                            )}
+
+                            <button type="submit" className="btn btn-primary" style={{ marginTop: "8px", padding: "16px", fontSize: "1.05rem" }} disabled={sending}>
+                              {sending ? "Processing Batch..." : `Fund ${batchRecipients.length} Streaming Payment${batchRecipients.length > 1 ? "s" : ""}`}
                             </button>
                           </form>
-                        )}
+
                       </div>
                     </div>
                   </div>
                 )}
-                {userRole === "worker" && activeSidebarView === "claims" && (
+              {/* 🏛️ VAULTS VIEW */}
+              {userRole === "employer" && activeSidebarView === "vaults" && (
                 <div className="view active">
-                  <div className="two-col">
-                    <div className="panel">
-                      <div className="panel-head">
-                        <h3>Stellar Worker Claim Center</h3>
-                      </div>
-
-                      {vaultTxStatus.type === "pending" && (
-                        <div className="tx-status-box pending" style={{ marginBottom: "14px" }}>
-                          <div className="tsb-title">⏳ Simulating Claim Transaction</div>
-                          <p>{vaultTxStatus.message}</p>
-                        </div>
-                      )}
-                      {vaultTxStatus.type === "success" && (
-                        <div className="tx-status-box success" style={{ marginBottom: "14px" }}>
-                          <div className="tsb-title">✓ Claim Confirmed!</div>
-                          <p>{vaultTxStatus.message}</p>
-                        </div>
-                      )}
-                      {vaultTxStatus.type === "error" && (
-                        <div className="tx-status-box error" style={{ marginBottom: "14px" }}>
-                          <div className="tsb-title">✕ Claim Request Failed</div>
-                          <p>{vaultTxStatus.message}</p>
-                        </div>
-                      )}
-
-                      <div className="workspace-tabs">
-                        <button className={`workspace-tab ${claimType === "instant" ? "active" : ""}`} onClick={() => setClaimType("instant")}>
-                          Standard Payout
-                        </button>
-                        <button className={`workspace-tab ${claimType === "scheduled" ? "active" : ""}`} onClick={() => setClaimType("scheduled")}>
-                          Scheduled Lock
-                        </button>
-                        <button className={`workspace-tab ${claimType === "streaming" ? "active" : ""}`} onClick={() => setClaimType("streaming")}>
-                          Continuous Stream
-                        </button>
-                        <button className={`workspace-tab ${claimType === "batch" ? "active" : ""}`} onClick={() => setClaimType("batch")}>
-                          Batch Claims
-                        </button>
-                      </div>
-
-                      {claimType === "instant" && (
-                        <div>
-                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                            Claim standard un-locked allocations deposited by your employers.
-                          </div>
-                          <div className="cert-row" style={{ marginBottom: "14px" }}>
-                            <span>Available Balance</span>
-                            <strong>{stroopsToXlm(workerAllocation)} {vaultTokenSymbol}</strong>
-                          </div>
-                          <button className="btn btn-primary" onClick={claimFromVault} disabled={sending || workerAllocation <= 0n} style={{ width: "100%" }}>
-                            Claim standard allocation
-                          </button>
-                        </div>
-                      )}
-
-                      {claimType === "scheduled" && (
-                        <div>
-                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                            Time-locked allocations will become claimable after their respective unlock timestamps.
-                          </div>
-                          {scheduledAllocations.length === 0 ? (
-                            <div style={{ padding: "14px", fontStyle: "italic", textAlign: "center", color: "var(--ink-mute)" }}>
-                              No scheduled locked allocations detected for your wallet address.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "8px", marginBottom: "14px" }}>
-                              {scheduledAllocations.map((item, idx) => (
-                                <div className="cert-row" key={idx}>
-                                  <span>Release time: {item.friendlyReleaseTime}</span>
-                                  <strong style={{ color: item.locked ? "var(--gold)" : "var(--vault-deep)" }}>
-                                    {stroopsToXlm(item.amount)} {vaultTokenSymbol} ({item.locked ? "Locked" : "Unlocked"})
-                                  </strong>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <button className="btn btn-primary" onClick={claimFromVault} disabled={sending || !scheduledAllocations.some(s => !s.locked)} style={{ width: "100%" }}>
-                            Claim unlocked allocations
-                          </button>
-                        </div>
-                      )}
-
-                      {claimType === "streaming" && (
-                        <div>
-                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                            Accruing payroll is streamed second-by-second and can be partially claimed at any moment.
-                          </div>
-                          
-                          {streamDetails ? (
-                            <div style={{ marginBottom: "14px" }}>
-                              <div className="cert-row">
-                                <span>Accrued & Claimable</span>
-                                <strong>{stroopsToXlm(liveStreamClaimable)} {vaultTokenSymbol}</strong>
-                              </div>
-                              <div className="cert-row">
-                                <span>Total Deployed Stream</span>
-                                <span>{stroopsToXlm(streamDetails.totalAmount)} {vaultTokenSymbol}</span>
-                              </div>
-                              <div className="cert-row">
-                                <span>Accrued Progress</span>
-                                <span>{streamProgress}%</span>
-                              </div>
-                              <div className="progress-container">
-                                <div className="progress-bar" style={{ width: `${streamProgress}%` }}></div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ padding: "14px", fontStyle: "italic", textAlign: "center", color: "var(--ink-mute)", marginBottom: "14px" }}>
-                              No active continuous stream found for your wallet address.
-                            </div>
-                          )}
-                          <button className="btn btn-primary" onClick={claimFromVault} disabled={sending || !streamDetails || liveStreamClaimable <= 0n} style={{ width: "100%" }}>
-                            Claim streaming salary
-                          </button>
-                        </div>
-                      )}
-
-                      {claimType === "batch" && (
-                        <div>
-                          <div className="notice info" style={{ margin: 0, marginBottom: "14px" }}>
-                            Enter the Batch ID provided by your employer to query and claim your batch payout allocation.
-                          </div>
-                          
-                          <div className="query-bar">
-                            <div className="query-bar-input-wrap">
-                              <svg className="query-bar-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20M9 21V9"/>
-                              </svg>
-                              <input
-                                type="number"
-                                className="query-bar-input"
-                                placeholder="Enter Batch ID (e.g. 1)"
-                                value={claimBatchIdInput}
-                                onChange={(e) => setClaimBatchIdInput(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && queryBatchPayout()}
-                              />
-                            </div>
-                            <button className="query-bar-btn" onClick={queryBatchPayout} disabled={sending}>
-                              {sending ? (
-                                <span style={{ opacity: 0.7 }}>Querying…</span>
-                              ) : (
-                                <>
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                                  </svg>
-                                  Query Batch
-                                </>
-                              )}
-                            </button>
-                          </div>
-
-
-                          {queriedBatchPayout && (
-                            <div style={{ background: "var(--paper-dim)", padding: "12px", borderRadius: "8px", marginBottom: "14px" }}>
-                              <div className="cert-row">
-                                <span>Worker Allocation</span>
-                                <strong>{stroopsToXlm(queriedBatchPayout.amount)} {vaultTokenSymbol}</strong>
-                              </div>
-                              <div className="cert-row">
-                                <span>Claim Status</span>
-                                <span>{queriedBatchPayout.claimed ? "Claimed" : "Unclaimed"}</span>
-                              </div>
-                              
-                              {!queriedBatchPayout.claimed && (
-                                <button className="btn btn-primary" onClick={claimBatchPayout} disabled={sending} style={{ width: "100%", marginTop: "12px" }}>
-                                  Claim Batch Allocation
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                  <div className="panel">
+                    <div className="panel-head">
+                      <h3>ProofPay Global Vault</h3>
                     </div>
-
-                    <div className="panel">
-                      <div className="panel-head">
-                        <h3>Discovered Vault Allocations</h3>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                      <div className="notice info" style={{ margin: 0 }}>
+                        ProofPay uses a single global shared vault contract on Stellar Testnet. All batch streaming payments are routed through it automatically.
                       </div>
-                      
-                      {myAvailableVaults.length === 0 ? (
-                        <div style={{ padding: "20px", textAlign: "center", color: "var(--ink-mute)", fontStyle: "italic" }}>
-                          No active payroll allocations found for your wallet address.
+                      <div style={{ background: "var(--paper-panel)", borderRadius: "12px", padding: "16px", border: "1px solid var(--paper-line-strong)" }}>
+                        <div style={{ fontSize: "0.78rem", color: "var(--ink-mute)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Active Vault Contract</div>
+                        <div style={{ fontFamily: "monospace", fontSize: "0.9rem", wordBreak: "break-all", color: "var(--vault)" }}>{vaultId}</div>
+                        <div style={{ marginTop: "12px", display: "flex", gap: "10px" }}>
+                          <a
+                            href={`https://stellar.expert/explorer/testnet/contract/${vaultId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: "0.85rem" }}
+                          >
+                            View on Stellar Expert ↗
+                          </a>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: "0.85rem" }}
+                            onClick={() => { navigator.clipboard.writeText(vaultId); toast("Contract address copied!"); }}
+                          >
+                            Copy Address
+                          </button>
                         </div>
-                      ) : (
-                        <div style={{ display: "grid", gap: "10px" }}>
-                          {myAvailableVaults.map((item, idx) => (
-                            <div className="stream-row" key={idx} style={{ padding: "8px 0" }}>
-                              <div className="stream-info">
-                                <div className="name">{shorten(item.address, 8, 8)}</div>
-                                <div className="sub">
-                                  {item.hasStream ? "Continuous Stream active " : ""}
-                                  {item.hasScheduled ? "Time lock active " : ""}
-                                </div>
-                              </div>
-                              <button className="btn btn-ghost btn-sm" onClick={() => { setVaultId(item.address); toast(`Switched active vault: ${shorten(item.address)}`); void loadVaultState(); }}>
-                                Route to Vault
-                              </button>
+                      </div>
+                      <div className="vault-grid">
+                        {activeVaultsData.map((v, idx) => (
+                          <div className="vcard" key={idx}>
+                            <div className="vcard-top">
+                              <span className="vcard-type">{v.type}</span>
+                              <span className={`pill ${v.status}`}>{v.status}</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            <h4>{v.name}</h4>
+                            <div className="id mono">{shorten(v.id, 8, 8)}</div>
+                            <div className="bal">
+                              {v.balance.toLocaleString()}
+                              <small>{v.asset}</small>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
+
+                {userRole === "worker" && activeSidebarView === "claims" && (
+                  <div className="view active">
+                  {/* Tx status banner */}
+                  {vaultTxStatus.type === "pending" && (
+
+                    <div className="tx-status-box pending" style={{ marginBottom: "14px" }}>
+                      <div className="tsb-title">⏳ Processing Claim…</div>
+                      <p>{vaultTxStatus.message}</p>
+                    </div>
+                  )}
+                  {vaultTxStatus.type === "success" && (
+                    <div className="tx-status-box success" style={{ marginBottom: "14px" }}>
+                      <div className="tsb-title">✓ Claim Confirmed!</div>
+                      <p>{vaultTxStatus.message}</p>
+                      {vaultTxStatus.hash && (
+                        <a href={`https://stellar.expert/explorer/testnet/tx/${vaultTxStatus.hash}`} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: "0.85rem", color: "#27ae60", textDecoration: "underline", display: "inline-block", marginTop: "6px" }}>
+                          View on Stellar Expert ↗
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {vaultTxStatus.type === "error" && (
+                    <div className="tx-status-box error" style={{ marginBottom: "14px" }}>
+                      <div className="tsb-title">✕ Claim Failed</div>
+                      <p>{vaultTxStatus.message}</p>
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gap: "16px" }}>
+
+                    {/* ── STREAMING PAYROLL (Primary: what employer sends via batch) ── */}
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>🔴 Live Streaming Payroll</h3>
+                        <span style={{ fontSize: "0.75rem", padding: "2px 10px", borderRadius: "20px",
+                          background: streamDetails && liveStreamClaimable > 0n ? "rgba(39,174,96,0.15)" : "rgba(0,0,0,0.08)",
+                          color: streamDetails && liveStreamClaimable > 0n ? "#27ae60" : "var(--ink-mute)" }}>
+                          {streamDetails && liveStreamClaimable > 0n ? "● CLAIMABLE NOW" : "No active stream"}
+                        </span>
+                      </div>
+                      {streamDetails ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                            <div style={{ background: "rgba(39,174,96,0.08)", borderRadius: "12px", padding: "16px", border: "1px solid rgba(39,174,96,0.2)" }}>
+                              <div style={{ fontSize: "0.72rem", color: "var(--ink-mute)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Claimable Now</div>
+                              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#27ae60", fontFamily: "monospace" }}>{stroopsToXlm(liveStreamClaimable)}</div>
+                              <div style={{ fontSize: "0.8rem", color: "var(--ink-mute)" }}>{vaultTokenSymbol}</div>
+                            </div>
+                            <div style={{ background: "var(--paper-panel)", borderRadius: "12px", padding: "16px", border: "1px solid var(--paper-line-strong)" }}>
+                              <div style={{ fontSize: "0.72rem", color: "var(--ink-mute)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Total Stream</div>
+                              <div style={{ fontSize: "1.5rem", fontWeight: 700, fontFamily: "monospace" }}>{stroopsToXlm(streamDetails.totalAmount)}</div>
+                              <div style={{ fontSize: "0.8rem", color: "var(--ink-mute)" }}>{vaultTokenSymbol}</div>
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--ink-mute)", marginBottom: "6px" }}>
+                              <span>Stream progress</span>
+                              <span style={{ fontWeight: 600, color: "var(--vault)" }}>{streamProgress}%</span>
+                            </div>
+                            <div className="progress-container">
+                              <div className="progress-bar" style={{ width: `${streamProgress}%` }}></div>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--ink-mute)", marginTop: "4px" }}>
+                              <span>Started {new Date(Number(streamDetails.startTime) * 1000).toLocaleDateString()}</span>
+                              <span>Ends {new Date(Number(streamDetails.endTime) * 1000).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <button className="btn btn-primary" onClick={() => claimFromVault("streaming")}
+                            disabled={sending || liveStreamClaimable <= 0n}
+                            style={{ width: "100%", padding: "14px", fontSize: "1rem" }}>
+                            {sending ? "Claiming…" : liveStreamClaimable > 0n
+                              ? `Claim ${stroopsToXlm(liveStreamClaimable)} ${vaultTokenSymbol}`
+                              : "Nothing to claim yet — accruing…"}
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--ink-mute)" }}>
+                          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ marginBottom: "12px", opacity: 0.4 }}>
+                            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                          </svg>
+                          <div style={{ fontStyle: "italic" }}>No active streaming payroll found for your wallet.</div>
+                          <div style={{ fontSize: "0.8rem", marginTop: "6px" }}>Ask your employer to fund a stream to your address.</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── INSTANT / STANDARD ALLOCATION ── */}
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>⚡ Standard Allocation</h3>
+                        <span style={{ fontSize: "0.75rem", padding: "2px 10px", borderRadius: "20px",
+                          background: workerAllocation > 0n ? "rgba(39,174,96,0.15)" : "rgba(0,0,0,0.08)",
+                          color: workerAllocation > 0n ? "#27ae60" : "var(--ink-mute)" }}>
+                          {workerAllocation > 0n ? `${stroopsToXlm(workerAllocation)} ${vaultTokenSymbol} available` : "Nothing available"}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.88rem", color: "var(--ink-mute)", marginBottom: "12px" }}>
+                        Instant one-off allocations deposited directly by your employer — claimable immediately with no waiting period.
+                      </div>
+                      <button className="btn btn-primary" onClick={() => claimFromVault("instant")}
+                        disabled={sending || workerAllocation <= 0n} style={{ width: "100%" }}>
+                        {workerAllocation > 0n ? `Claim ${stroopsToXlm(workerAllocation)} ${vaultTokenSymbol}` : "No standard allocation"}
+                      </button>
+                    </div>
+
+                    {/* ── SCHEDULED / TIME-LOCKED ── */}
+                    <div className="panel">
+                      <div className="panel-head">
+                        <h3>🔒 Time-Locked Payroll</h3>
+                        <span style={{ fontSize: "0.75rem", padding: "2px 10px", borderRadius: "20px",
+                          background: scheduledAllocations.some(s => !s.locked) ? "rgba(39,174,96,0.15)" : "rgba(0,0,0,0.08)",
+                          color: scheduledAllocations.some(s => !s.locked) ? "#27ae60" : "var(--ink-mute)" }}>
+                          {scheduledAllocations.some(s => !s.locked) ? "● Unlocked & Claimable" : scheduledAllocations.length > 0 ? "🔒 Still Locked" : "None"}
+                        </span>
+                      </div>
+                      {scheduledAllocations.length === 0 ? (
+                        <div style={{ fontSize: "0.88rem", color: "var(--ink-mute)", padding: "8px 0" }}>
+                          No time-locked allocations found for your address.
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: "8px", marginBottom: "12px" }}>
+                          {scheduledAllocations.map((item, idx) => (
+                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                              background: item.locked ? "rgba(255,180,0,0.07)" : "rgba(39,174,96,0.07)",
+                              border: `1px solid ${item.locked ? "rgba(255,180,0,0.2)" : "rgba(39,174,96,0.2)"}`,
+                              borderRadius: "10px", padding: "10px 14px" }}>
+                              <div>
+                                <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>{stroopsToXlm(item.amount)} {vaultTokenSymbol}</div>
+                                <div style={{ fontSize: "0.75rem", color: "var(--ink-mute)" }}>Unlocks: {item.friendlyReleaseTime}</div>
+                              </div>
+                              <span style={{ fontSize: "0.78rem", fontWeight: 600, color: item.locked ? "var(--gold)" : "#27ae60" }}>
+                                {item.locked ? "🔒 Locked" : "✓ Claimable"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button className="btn btn-primary" onClick={() => claimFromVault("scheduled")}
+                        disabled={sending || !scheduledAllocations.some(s => !s.locked)} style={{ width: "100%" }}>
+                        Claim Unlocked Allocations
+                      </button>
+                    </div>
+
+                  </div>
+                  </div>
+                )}
+
+
+              {/* 📜 WORKER TX HISTORY VIEW */}
+              {userRole === "worker" && activeSidebarView === "history" && (
+                <div className="view active">
+                  <div className="panel">
+                    <div className="panel-head">
+                      <h3>Transaction History</h3>
+                    </div>
+                    <div style={{ marginBottom: "16px", fontSize: "0.88rem", color: "var(--ink-mute)" }}>
+                      Live on-chain activity from the ProofPay vault contract streamed in real time.
+                    </div>
+
+                    {activityFeed.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "48px 16px", color: "var(--ink-mute)" }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ marginBottom: "14px", opacity: 0.35 }}>
+                          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <div style={{ fontStyle: "italic" }}>No transactions recorded yet in this session.</div>
+                        <div style={{ fontSize: "0.8rem", marginTop: "6px" }}>Transactions appear here as they happen on-chain.</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                        {activityFeed.slice().reverse().map((event, idx) => {
+                          const isClaim = event.type === "PayrollClaimed" || event.type === "ScheduledClaimed" || event.type === "StreamClaimed";
+                          const isDeposit = event.type === "PayrollDeposited" || event.type === "ScheduledDeposited";
+                          const icon = isClaim ? "💸" : isDeposit ? "📥" : "⚡";
+                          const iconBg = isClaim ? "rgba(39,174,96,0.15)" : "rgba(108,92,231,0.15)";
+                          const amountColor = isClaim ? "#27ae60" : "var(--vault)";
+                          const label = event.type.replace(/([A-Z])/g, ' $1').trim();
+                          return (
+                            <div key={idx} style={{
+                              display: "flex", alignItems: "flex-start", gap: "12px",
+                              background: "var(--paper-panel)", borderRadius: "12px", padding: "14px 16px",
+                              border: "1px solid var(--paper-line-strong)"
+                            }}>
+                              <div style={{
+                                width: "36px", height: "36px", borderRadius: "50%", flexShrink: 0,
+                                background: iconBg,
+                                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem"
+                              }}>
+                                {icon}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                                  <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{label}</div>
+                                  <div style={{ fontSize: "0.78rem", color: "var(--ink-mute)", whiteSpace: "nowrap" }}>
+                                    Ledger #{event.ledger}
+                                  </div>
+                                </div>
+                                <div style={{ fontSize: "0.82rem", color: "var(--ink-mute)", marginTop: "2px", fontFamily: "monospace" }}>
+                                  {shorten(event.worker, 8, 8)}
+                                </div>
+                                <div style={{ fontSize: "0.9rem", fontWeight: 600, color: amountColor, marginTop: "4px" }}>
+                                  {isClaim ? "+" : "-"}{stroopsToXlm(event.amount)} {vaultTokenSymbol}
+                                </div>
+                                <a href={`https://stellar.expert/explorer/testnet/tx/${event.txHash}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  style={{ fontSize: "0.78rem", color: "var(--vault)", textDecoration: "underline", display: "inline-block", marginTop: "4px" }}>
+                                  {shorten(event.txHash, 8, 8)} ↗
+                                </a>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+
 
               {/* 📄 INCOME PROOFS VIEW */}
               {userRole === "worker" && activeSidebarView === "proofs" && (
@@ -2346,6 +2384,7 @@ export default function App() {
                           <span>No reviews yet — be the first to submit!</span>
                         </div>
                       )}
+
                     </div>
                   </div>
 
@@ -2358,74 +2397,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ── MODALS & DRAWER OVERLAYS ── */}
-      
-      {/* Deploy Vault Modal */}
-      <div className={`modal-backdrop ${modalVaultOpen ? "open" : ""}`}>
-        <div className="modal">
-          <div className="modal-head">
-            <h3>Deploy a new dynamic vault</h3>
-            <button className="modal-close" onClick={() => setModalVaultOpen(false)}>&times;</button>
-          </div>
-          
-          {vaultTxStatus.type === "pending" && (
-            <div className="tx-status-box pending" style={{ marginBottom: "14px" }}>
-              <div className="tsb-title">⏳ Deploying Vault</div>
-              <p>{vaultTxStatus.message}</p>
-            </div>
-          )}
-          {vaultTxStatus.type === "success" && (
-            <div className="tx-status-box success" style={{ marginBottom: "14px" }}>
-              <div className="tsb-title">✓ Deployed!</div>
-              <p>{vaultTxStatus.message}</p>
-            </div>
-          )}
-          {vaultTxStatus.type === "error" && (
-            <div className="tx-status-box error" style={{ marginBottom: "14px" }}>
-              <div className="tsb-title">✕ Deployment Failed</div>
-              <p>{vaultTxStatus.message}</p>
-            </div>
-          )}
 
-          <form onSubmit={(e) => { e.preventDefault(); void deployDynamicVault(); }}>
-            <div className="field">
-              <label>Currency Asset Standard</label>
-              <select value={deployedTokenType} onChange={(e) => setDeployedTokenType(e.target.value as any)}>
-                <option value="USDC">💵 USDC Stablecoin (Testnet)</option>
-                <option value="CUSTOM">🔧 Custom SAC Token Address</option>
-              </select>
-            </div>
-
-            {deployedTokenType === "CUSTOM" && (
-              <div className="field">
-                <label>Custom SAC Token Address (C...)</label>
-                <input 
-                  type="text" 
-                  placeholder="C..." 
-                  value={customTokenSAC} 
-                  onChange={(e) => setCustomTokenSAC(e.target.value)} 
-                />
-              </div>
-            )}
-
-            <div className="modal-actions">
-              {vaultTxStatus.type === "success" ? (
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => {
-                  setModalVaultOpen(false);
-                  setActiveSidebarView("vault");
-                }}>Go to Vault</button>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setModalVaultOpen(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={sending}>
-                    Deploy Vault
-                  </button>
-                </>
-              )}
-            </div>
-          </form>
-        </div>
-      </div>
 
       {/* Add Teammate Modal */}
       <div className={`modal-backdrop ${modalTeamOpen ? "open" : ""}`}>
