@@ -80,10 +80,15 @@ dist/assets/index-DimTyRBa.js   785.52 kB
 
 ## 👥 Connected Pilot Feedback Registry
 
-To validate real-world onboarding, ProofPay tracks feedback dynamically:
-* The dashboard includes an interactive **User Onboarding & Feedback Registry** form.
-* Pilot remote contractors and employers connect their Stellar wallets and submit their feedback directly.
-* Submissions are stored dynamically inside local browser storage, allowing pilot testers to register and display reviews instantly during live product demos.
+To rigorously validate real-world onboarding, ProofPay actively collects and audits feedback from remote contractors and employers interacting with our decentralized streaming and time-locked vaults.
+
+* **📄 Complete Pilot User Feedback & Onboarding Registry**: [View Dedicated Markdown Documentation](./PILOT_USER_FEEDBACK_REGISTRY.md)
+* **📊 Raw Live Evidence Google Sheet**: [View Real User Feedback Responses & Timestamps](https://docs.google.com/spreadsheets/d/1w3wulMS3E9hz4aagpLwuUOaBN7Sfrq9RnwejelcNQuY/edit?usp=sharing)
+* **📝 Pilot Tester Onboarding & Feedback Google Form**: [Open User Testing Google Form](https://forms.gle/ELxvMWXgsaV8FavM8)
+
+* Pilot remote contractors connect their testnet wallets via **Freighter**, experience instant payouts, streaming escrows, and cryptographic income proof verifications directly on-chain (`invokeHostFunction`).
+* Every submission is backed by an explicit **Soroban smart contract transaction hash** verified on StellarExpert.
+* Detailed reviews emphasize high satisfaction with our intuitive GUI, lightning-fast execution times, and responsive transaction flow.
 
 ---
 
@@ -99,7 +104,7 @@ We have rigorously followed the Green Belt requirements to ensure ProofPay is a 
 
 ### User Onboarding
 - [x] **Minimum 10 real users onboarded**: See the **Proof of Wallet Interactions** below.
-- [x] **Proof of wallet interactions required**: We generated 10 unique worker wallets and established on-chain USDC interactions.
+- [x] **Proof of wallet interactions required**: 10 external pilot test users successfully onboarded, connected their individual testnet wallets via Freighter, and established verified on-chain Soroban smart contract interactions.
 - [x] **Basic user feedback collection mandatory**: Implemented via the *Pilot Feedback Registry* on the dashboard.
 
 ### Product Quality
@@ -127,27 +132,24 @@ We have rigorously followed the Green Belt requirements to ensure ProofPay is a 
 
 ---
 
-### 🧾 Proof of 10+ User Wallet Interactions (Testnet)
-To validate our system under scale, we successfully processed interactions for 10 remote contractors on the Stellar Testnet. Below are the verified worker addresses and their corresponding on-chain interaction transactions with the ProofPay factory contract:
-1. **Worker 1**: `GDEWPINT2HCUXGIG3JBLRBQEVWXQ65CKNSS2ZAZ3BXOMXYVYHDF3774O`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/f12d50958148ce3e8237b7b26457f2cbe3af26a281305168f3185b74a0388861)
-2. **Worker 2**: `GA3A6TDZS4YQJDTNOHF4RCUXBPVP3NQJFQ6L5QSYZZQW6MQ4RZTSYSYO`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/14409361d54b9b68ece62e5fcfce8c6b650edb08ab5586fc80436624dd3c1d17)
-3. **Worker 3**: `GBXR4LFRIWYCHHJKLH44KGSEHUAHNYZIPTAVZD7CCG3QMO7HMWY7JDDX`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/bb50b40d584bfa7cab45632b203cb31c3dcac42b443b27b6fbc0db63b2b6c582)
-4. **Worker 4**: `GAFR6TP47PEYDWCVKARQBUBVDL3BTXHJ2YOU72TMWPRZHZKRFLQTWUXD`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/ae72b9c47e17ebf2d1a2b93eace6e6ba042e843dc6b0b5ac83c72045e0765870)
-5. **Worker 5**: `GDBXQPES2JCOPE3SE6BIU3QBUMSZIINFVUTV42TLHP5CK7XXRBWQIJR5`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/e4ebd4e46d926aa65302293365b928a8fb15d59097e665ceda26d2ab0664cbac)
-6. **Worker 6**: `GD2VR2YMYRMXT6OYEFDZD6HYLEFOGIG5KVEQSEOBUTDFF2CRZOSDAAZA`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/f3dc7b31e4b0268e6eacb641b60591b2c6f1a70d5d1f6ce6d42d4dc9ca0ecd1f)
-7. **Worker 7**: `GAMQP3NSHP3ZWDZMLGFVU6XPQASC2UYKR5U5ZXC2OD7GB2X4UIEKZP4H`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/1e461643fe13007ed40034d4f107138e79df74801ac7b126adb71177ffc8622c)
-8. **Worker 8**: `GBDTVMSDPSHAAEXHP2HT554FHI3O3ATWAPK37EJMW5WSQICS6AV7RX4I`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/9130fb742f59ff2044a43085523640f59ac8932d6effd9d3ab50c79ddad17002)
-9. **Worker 9**: `GDRQVYT7R2PDKZQE3QGTSLFCHOQFHJI3K5RGW2FZDBZV77KB2I2UBGO4`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/d96d0598594ae7ccc3713b8a8cf6ec2dc14ad56d22317382b15eea5960bba8d3)
-10. **Worker 10**: `GAPDWI2IOTZSIQLOLKCAHFVDIKYFFKUUBSPJXPB3J4WGTYY2NJ2G5D36`  
-   ↳ [View Interaction Transaction](https://stellar.expert/explorer/testnet/tx/89288956ff6d3882f4b57c3dbed6f195e3f1d0c49a4502f69e50d2ab4adc60c9)
+### 🧾 Proof of 10+ User Wallet Interactions (Testnet) & Evidence Registry
+To rigorously validate our smart contract architecture under production load, 10 external pilot testers and remote contractors connected their Freighter wallets and independently interacted with our platform on the Stellar Testnet. Below is our verified evidence table connecting tester accounts, live wallet addresses, feature evaluations, explicit **Soroban Smart Contract Invocations (`invokeHostFunction`)**, and real-time user UX reviews:
 
-*Employer Wallet / Deployer used for batch processing: `GDRM7Y5MDHEVHV3YPVPGYXSQI5KCCAN4UBMNMJAUUDYIBHGDF6WMNZV3`*
+* **📄 Complete Evidence Registry File**: [Read Full Onboarding Registry](./PILOT_USER_FEEDBACK_REGISTRY.md)
+* **📊 Raw Live Google Sheet Responses**: [View Complete Responses & Timestamps](https://docs.google.com/spreadsheets/d/1w3wulMS3E9hz4aagpLwuUOaBN7Sfrq9RnwejelcNQuY/edit?usp=sharing)
+* **📝 Pilot Tester Google Form**: [Submit & Review Pilot Feedback](https://forms.gle/ELxvMWXgsaV8FavM8)
+
+| # | Timestamp | Tester Email | Stellar Testnet Wallet (Worker) | Features Tested | Verified Soroban Contract Interaction (Tx Link) | Rating | User Feedback & UX Review |
+|:-:|:---|:---|:---|:---|:---:|:---:|:---|
+| **1** | 28/07/2026 16:53:51 | `gf201007@gmail.com` | `GDJYCVRN4ZARTGVPCCCSY5L33EBWMXOQO4WRFGQLBBEIC5XRZ3RBU34T` | ⚡ Direct Instant Payroll | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/5f7f3df46d0f306309ce3eab31bfed91ba1ba9c652eace11f513a6aece035166) | ⭐⭐⭐⭐⭐ (5/5) | "Amazing GUI and super clean transaction flow!" |
+| **2** | 28/07/2026 16:55:23 | `Mausamkumri871gamil.com` | `GAEL5RXFUYGQC46CTOX27IVEGM3OJMUDXMIOIUGD6XE32HM24BDA7V4K` | ⚡ Direct Payroll, 🌊 Streaming Escrow, ⏳ Time-Locked Escrow, 🔐 Income Proofs | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/bb5a8894b8851003c2bbb4c2d40550090d9bc24844f40ddf10ac39b5b4a4eace) | ⭐⭐⭐⭐⭐ (5/5) | "The transaction flow is super smooth and Freighter wallet connected to the smart contract without any lag." |
+| **3** | 28/07/2026 16:57:29 | `sonikeshav838@gmail.com` | `GD7O7YL2AK4LCN4F6KK3D25XJQRCEXK5JWQXMTCDZZYGEN45UZROI6HB` | ⚡ Direct Payroll, 🌊 Streaming Escrow, ⏳ Time-Locked Escrow | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/a6f577631a4249a57cf68ed2e7c55e152620eda921833e9fe99a94b8c0f12364) | ⭐⭐⭐⭐⭐ (5/5) | "Loved the intuitive UI!" |
+| **4** | 28/07/2026 17:05:53 | `Omsoni54441@gmail.com` | `GBOQ32HBIVDIM7FDXKVDFIPIVAG5UKKQXQMKPPO7HJVKQXKGQA3J25I3` | ⚡ Direct Payroll, 🌊 Streaming Escrow, ⏳ Time-Locked Escrow, 🔐 Income Proofs | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/9eb7be645b0414a776340688a3c5efe795d30d44f45842da5082ab86c2af8157) | ⭐⭐⭐⭐⭐ (5/5) | "Great user experience" |
+| **5** | 28/07/2026 17:05:23 | `palakrajak2233@gmail.com` | `GDOGC4SDTYXGBMLJH6UAKIFFBIEEH36DTZT5FBNBIFLEM7GK2EACNFB5` | ⚡ Direct Payroll, 🌊 Streaming Escrow, ⏳ Time-Locked Escrow | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/fc9d49e814cd7b9fc7fe68699e0b02ab911ebc16a86dd7593aea6b64646d0293) | ⭐⭐⭐⭐⭐ (5/5) | "Very impressive dashboard design!" |
+| **6** | 28/07/2026 17:15:29 | `Siddharthguru19@gmail.com` | `GBXHGX27Y2LMWYC3NOHHQL6MR25NBNKMEH3S4OK252RWORITDDYS2TRF` | ⚡ Direct Payroll, 🌊 Streaming Escrow | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/c4f6c0438ce47decc175b982a3426013783d852bd15c5b50711c8ca6f4514773) | ⭐⭐⭐⭐⭐ (5/5) | "The entire GUI and interaction flow feels premium and responsive." |
+| **7** | 28/07/2026 17:20:56 | `rathorerohan94579@gmail.com` | `GAKVZK6CR4BR6WTFFFXIGTLSI4PA6RGQVWI5HGYDPIXIYJHYK4YTRZQM` | ⚡ Direct Instant Payroll | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/88f62e5506bd4c3df9c73a7deaa0ad93254faf6f6b6c4d936c470ef10b2d53ab) | ⭐⭐⭐⭐⭐ (5/5) | "Smooth wallet onboarding" |
+| **8** | 28/07/2026 17:25:10 | `aakashrajpoot274@gmail.com` | `GBNULPUTXZ4XKFJ5HJ5NR5W42K3CIA7GIRUMIDV4GP2PIHZ3ATMYKTZH` | ⚡ Direct Payroll, 🌊 Streaming Escrow | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/f288b7eb04c1586d0bb5dcd84f5948a7957fc5ef3885e7a17dc65d5ac503da12) | ⭐⭐⭐⭐⭐ (5/5) | "Clean layout, beautiful UI" |
+| **9** | 28/07/2026 17:28:30 | `devkirajak722@gmail.com` | `GAKKP6MJVSU2RLTXT3LV5HMV3OUMH2OAOWS7NBAJQGSRXFOJGYS7QOBP` | ⚡ Direct Payroll, 🌊 Streaming Escrow, ⏳ Time-Locked Escrow | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/69fb5cbcc6d3178604c4d05fc895973f52037d6199d90f007fa77a173049c178) | ⭐⭐⭐⭐☆ (4/5) | "Really liked how seamless the GUI claiming flow is! Everything ran so quickly on testnet." |
+| **10**| 28/07/2026 17:30:06 | `nikunjdarji1432@gmail.com` | `GB74FH7VOWUC4IHHB237QJF4QSBHS2FFTEYOSTUWCAGHKSZNC2UJQGJS` | ⚡ Direct Payroll, 🌊 Streaming Escrow, ⏳ Time-Locked Escrow | [View Soroban Call Tx](https://stellar.expert/explorer/testnet/tx/e77521fe1680747cc22db551ed27f029855399ce08e45e16886928f85f933dc5) | ⭐⭐⭐⭐⭐ (5/5) | "Fantastic UI design and super quick transaction times" |
+
+*All transactions above reflect verified, independent smart contract interactions executed on the Stellar Testnet.*
